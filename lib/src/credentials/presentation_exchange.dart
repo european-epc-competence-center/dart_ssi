@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dart_ssi/credentials.dart';
+import 'package:iso_mdoc/iso_mdoc.dart';
 import 'package:json_path/json_path.dart';
 import 'package:json_schema/json_schema.dart';
 import 'package:uuid/uuid.dart';
@@ -123,6 +124,9 @@ class InputDescriptor implements JsonObject {
     if (input.containsKey('purpose')) purpose = input['purpose'];
     if (input.containsKey('constraints')) {
       constraints = InputDescriptorConstraints.fromJson(input['constraints']);
+    }
+    if (input.containsKey('format')) {
+      format = FormatProperty.fromJson(input['format']);
     }
     if (input.containsKey('group')) group = input['group'].cast<String>();
   }
@@ -595,9 +599,16 @@ class FormatProperty implements JsonObject {
   LinkedDataProofFormat? ldp;
   LinkedDataProofFormat? ldpVc;
   LinkedDataProofFormat? ldpVp;
+  MdocFormat? mdocFormat;
 
   FormatProperty(
-      {this.jwt, this.jwtVc, this.jwtVp, this.ldp, this.ldpVc, this.ldpVp});
+      {this.jwt,
+      this.jwtVc,
+      this.jwtVp,
+      this.ldp,
+      this.ldpVc,
+      this.ldpVp,
+      this.mdocFormat});
 
   FormatProperty.fromJson(dynamic formatJson) {
     var format = credentialToMap(formatJson);
@@ -617,6 +628,9 @@ class FormatProperty implements JsonObject {
     if (format.containsKey('ldp_vp')) {
       ldpVp = LinkedDataProofFormat.fromJson(format['ldp_vp']);
     }
+    if (format.containsKey('mso_mdoc')) {
+      mdocFormat = MdocFormat.fromJson(format['mso_mdoc']);
+    }
   }
 
   @override
@@ -628,6 +642,7 @@ class FormatProperty implements JsonObject {
     if (ldp != null) jsonObject['ldp'] = ldp!.toJson();
     if (ldpVp != null) jsonObject['ldp_vp'] = ldpVp!.toJson();
     if (ldpVc != null) jsonObject['ldp_vc'] = ldpVc!.toJson();
+    if (mdocFormat != null) jsonObject['mso_mdoc'] = mdocFormat!.toJson();
     return jsonObject;
   }
 
@@ -643,6 +658,31 @@ class JwtFormat implements JsonObject {
   JwtFormat({required this.algorithms});
 
   JwtFormat.fromJson(dynamic jwtFormatJson) {
+    var jwtAlg = credentialToMap(jwtFormatJson);
+    if (jwtAlg.containsKey('alg')) {
+      algorithms = jwtAlg['alg'].cast<String>();
+    } else {
+      throw FormatException('JwtFormat needs alg property');
+    }
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {'alg': algorithms};
+  }
+
+  @override
+  String toString() {
+    return jsonEncode(toJson());
+  }
+}
+
+class MdocFormat implements JsonObject {
+  late List<String> algorithms;
+
+  MdocFormat({required this.algorithms});
+
+  MdocFormat.fromJson(dynamic jwtFormatJson) {
     var jwtAlg = credentialToMap(jwtFormatJson);
     if (jwtAlg.containsKey('alg')) {
       algorithms = jwtAlg['alg'].cast<String>();
@@ -694,12 +734,13 @@ enum StatusDirective { required, allowed, disallowed }
 
 /// Object used when a credential-List is filtered with a presentationDefinition
 class FilterResult implements JsonObject {
-  late List<VerifiableCredential> credentials;
+  List<VerifiableCredential>? credentials;
   late String presentationDefinitionId;
   SubmissionRequirement? submissionRequirement;
   late List<String> matchingDescriptorIds;
   List<InputDescriptorConstraints>? selfIssuable;
   bool fulfilled;
+  List<IssuerSignedObject>? isoMdocCredentials;
 
   FilterResult(
       {required this.credentials,
@@ -707,17 +748,20 @@ class FilterResult implements JsonObject {
       this.submissionRequirement,
       required this.presentationDefinitionId,
       this.selfIssuable,
-      this.fulfilled = true});
+      this.fulfilled = true,
+      this.isoMdocCredentials});
 
   @override
   Map<String, dynamic> toJson() {
     Map<String, dynamic> jsonObject = {};
 
-    List creds = [];
-    for (var c in credentials) {
-      creds.add(c.toJson());
+    if (credentials != null) {
+      List creds = [];
+      for (var c in credentials!) {
+        creds.add(c.toJson());
+      }
+      jsonObject['credentials'] = creds;
     }
-    jsonObject['credentials'] = creds;
     if (submissionRequirement != null) {
       jsonObject['submissionRequirement'] = submissionRequirement!.toJson();
     }

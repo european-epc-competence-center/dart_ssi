@@ -6,9 +6,12 @@ import 'package:base_codecs/base_codecs.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dart_multihash/dart_multihash.dart';
 import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
+import 'package:elliptic/ecdh.dart' as ecdh;
+import 'package:elliptic/elliptic.dart' as elliptic;
 import 'package:elliptic/elliptic.dart';
 import 'package:http/http.dart' as http;
 import 'package:web3dart/crypto.dart';
+import 'package:x25519/x25519.dart' as x25519;
 
 import '../credentials/credential_operations.dart';
 import '../wallet/wallet_store.dart';
@@ -298,3 +301,119 @@ String getDateTimeNowString() {
   xmlDate += 'Z';
   return xmlDate;
 }
+
+List<int> ecdhES(dynamic privateKey, dynamic publicKey, String alg, String enc,
+    {String? apu, String? apv}) {
+  List<int> z;
+  if (privateKey is elliptic.PrivateKey && publicKey is elliptic.PublicKey) {
+    z = ecdh.computeSecret(privateKey, publicKey);
+  } else if (privateKey is List<int> && publicKey is List<int>) {
+    z = x25519.X25519(privateKey, publicKey);
+  } else if (publicKey is Map && privateKey is Map) {
+    // keys given as jwks
+    var crv = privateKey['crv'];
+    if (crv != publicKey['crv']) {
+      throw Exception('curves do not match ($crv != ${publicKey['crv']}');
+    }
+    elliptic.Curve? c;
+
+    if (crv.startsWith('P') || crv.startsWith('secp256k1')) {
+      if (crv == 'P-256') {
+        c = elliptic.getP256();
+      } else if (crv == 'P-384') {
+        c = elliptic.getP384();
+      } else if (crv == 'P-521') {
+        c = elliptic.getP521();
+      } else if (crv == 'secp256k1') {
+        c = elliptic.getSecp256k1();
+      } else {
+        throw UnimplementedError("Curve `$crv` not supported");
+      }
+
+      var castedPrivate = elliptic.PrivateKey(
+          c,
+          bytesToUnsignedInt(
+              base64Decode(addPaddingToBase64(privateKey['d']))));
+      var castedPublic = elliptic.PublicKey.fromPoint(
+          c,
+          elliptic.AffinePoint.fromXY(
+              bytesToUnsignedInt(
+                  base64Decode(addPaddingToBase64(publicKey['x']))),
+              bytesToUnsignedInt(
+                  base64Decode(addPaddingToBase64(publicKey['y'])))));
+      z = ecdh.computeSecret(castedPrivate, castedPublic);
+    } else if (crv.startsWith('X')) {
+      var castedPrivate = base64Decode(addPaddingToBase64(privateKey['d']));
+      var castedPublic = base64Decode(addPaddingToBase64(publicKey['x']));
+      z = x25519.X25519(castedPrivate, castedPublic);
+    } else {
+      throw UnimplementedError("Curve `$crv` not supported");
+    }
+  } else {
+    throw Exception('Unknown key-Type');
+  }
+
+  var keyDataLen = 128;
+  Uint8List encAscii;
+  if (alg == 'ECDH-ES') {
+    encAscii = ascii.encode(enc);
+    if (enc.contains('128')) {
+      keyDataLen = 128;
+    }
+    if (enc.contains('192')) {
+      keyDataLen = 192;
+    }
+    if (enc.contains('256')) {
+      keyDataLen = 256;
+    }
+  } else {
+    // with KeyWrap
+    encAscii = ascii.encode(alg);
+    if (alg.contains('128')) {
+      keyDataLen = 128;
+    }
+    if (alg.contains('192')) {
+      keyDataLen = 192;
+    }
+    if (alg.contains('256')) {
+      keyDataLen = 256;
+    }
+  }
+  print('enc: $enc, alg: $alg, len: $keyDataLen');
+  var suppPubInfo = _int32BigEndianBytes(keyDataLen);
+
+  var encLength = _int32BigEndianBytes(encAscii.length);
+
+  List<int> partyU, partyULength;
+  if (apu != null) {
+    partyU = base64Decode(addPaddingToBase64(apu));
+    partyULength = _int32BigEndianBytes(partyU.length);
+  } else {
+    partyU = [];
+    partyULength = _int32BigEndianBytes(0);
+  }
+
+  List<int> partyV, partyVLength;
+  if (apv != null) {
+    partyV = base64Decode(addPaddingToBase64(apv));
+    partyVLength = _int32BigEndianBytes(partyV.length);
+  } else {
+    partyV = [];
+    partyVLength = _int32BigEndianBytes(0);
+  }
+
+  var otherInfo = encLength +
+      encAscii +
+      partyULength +
+      partyU +
+      partyVLength +
+      partyV +
+      suppPubInfo;
+
+  var kdfIn = [0, 0, 0, 1] + z + otherInfo;
+  var digest = sha256.convert(kdfIn);
+  return digest.bytes.sublist(0, keyDataLen ~/ 8);
+}
+
+Uint8List _int32BigEndianBytes(int value) =>
+    Uint8List(4)..buffer.asByteData().setInt32(0, value, Endian.big);

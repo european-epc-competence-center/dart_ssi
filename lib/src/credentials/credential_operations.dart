@@ -5,7 +5,9 @@ import 'package:crypto/crypto.dart';
 import 'package:dart_ssi/credentials.dart';
 import 'package:dart_ssi/did.dart';
 import 'package:dart_ssi/src/credentials/jsonLdContext/json_web_signature_2020_context.dart';
+import 'package:dart_ssi/src/util/private_util.dart';
 import 'package:http/http.dart';
+import 'package:iso_mdoc/iso_mdoc.dart' as iso;
 import 'package:json_ld_processor/json_ld_processor.dart';
 import 'package:json_path/json_path.dart';
 import 'package:json_schema/json_schema.dart';
@@ -566,7 +568,7 @@ Future<String> buildPresentation(
         if (submission != null) {
           mapping = submission.descriptorMap;
         }
-        for (var cred in element.credentials) {
+        for (var cred in element.credentials ?? []) {
           var credEntry = cred.toJson();
           credMapList.add(credEntry);
           var tmp = getHolderDidFromCredential(credEntry);
@@ -1257,23 +1259,23 @@ Future<bool> verifyStringSignature(String jws,
 }
 
 List<FilterResult> searchCredentialsForPresentationDefinition(
-    List<dynamic> credentials, PresentationDefinition presentationDefinition) {
-  //cast everything
-  var creds = <VerifiableCredential>[];
-  for (var entry in credentials) {
-    if (entry is VerifiableCredential) {
-      creds.add(entry);
-    } else {
-      creds.add(VerifiableCredential.fromJson(entry));
-    }
-  }
-
+    PresentationDefinition presentationDefinition,
+    {List<VerifiableCredential>? credentials,
+    List<iso.IssuerSignedObject>? isoMdocCredentials}) {
   var globalFormat = presentationDefinition.format;
   if (globalFormat != null) {
-    if (globalFormat.ldpVp == null &&
-        globalFormat.ldp == null &&
-        globalFormat.ldpVc == null) {
-      throw Exception('Only supported Formats are Linked Data proofs');
+    if (globalFormat.ldpVp != null ||
+        globalFormat.ldp != null ||
+        globalFormat.ldpVc != null) {
+      if (credentials == null || credentials.isEmpty) {
+        throw Exception('No credentials for this format');
+      }
+    } else if (globalFormat.mdocFormat != null) {
+      if (isoMdocCredentials == null) {
+        throw Exception('No credentials for this format');
+      }
+    } else {
+      throw Exception('unsupported Format global');
     }
   }
 
@@ -1299,9 +1301,8 @@ List<FilterResult> searchCredentialsForPresentationDefinition(
       }
 
       //credentials per descriptor
-      var filteredCreds =
-          _processInputDescriptor(descriptor, globalFormat, creds);
-      print(filteredCreds.credentials.length);
+      var filteredCreds = _processInputDescriptor(
+          descriptor, globalFormat, credentials, isoMdocCredentials);
       filterResultPerDescriptor[descriptor.id] = filteredCreds;
     }
 
@@ -1311,31 +1312,17 @@ List<FilterResult> searchCredentialsForPresentationDefinition(
       finalCredList.add(_processSubmissionRequirement(filterResultPerDescriptor,
           descriptorGroups, requirement, presentationDefinition.id));
     }
-    print(
-        '${finalCredList.length} / ${finalCredList.first.credentials.length}');
     return finalCredList;
   } else {
-    List<VerifiableCredential> inputCreds = creds;
-    List<String> allDescriptorIds = [];
-    List<InputDescriptorConstraints> allSelfIssuables = [];
+    List<FilterResult> finalResult = [];
     for (var descriptor in presentationDefinition.inputDescriptors) {
-      //Without any requirements, all input_descriptors must be fulfilled
-      allDescriptorIds.add(descriptor.id);
-      var res = _processInputDescriptor(descriptor, globalFormat, inputCreds);
-      // TODO: I think this way is wrong. The input_descriptor can be fulfilled by multiple credentials.
-      inputCreds = res.credentials;
-      if (res.selfIssuable != null) {
-        allSelfIssuables.addAll(res.selfIssuable!);
-      }
+      // Without any requirements, all input_descriptors must be fulfilled
+      // but can be fulfilled with different credentials
+      var result = _processInputDescriptor(
+          descriptor, globalFormat, credentials, isoMdocCredentials);
+      finalResult.add(result);
     }
-    return [
-      FilterResult(
-          selfIssuable: allSelfIssuables.isNotEmpty ? allSelfIssuables : null,
-          credentials: inputCreds,
-          matchingDescriptorIds: allDescriptorIds,
-          presentationDefinitionId: presentationDefinition.id,
-          fulfilled: inputCreds.isEmpty || allSelfIssuables.isEmpty)
-    ];
+    return finalResult;
   }
 }
 
@@ -1351,6 +1338,7 @@ FilterResult _processSubmissionRequirement(
 
   List<String> accordingDescriptors = descriptorGroups[requirement.from];
   List<VerifiableCredential> creds = [];
+  List<iso.IssuerSignedObject> credsIso = [];
   List<InputDescriptorConstraints> selfIssuable = [];
   bool fulfilled = true;
 
@@ -1359,40 +1347,65 @@ FilterResult _processSubmissionRequirement(
     if (descriptor.selfIssuable != null) {
       selfIssuable.addAll(descriptor.selfIssuable!);
     }
+
     var credsForDescriptor = descriptor.credentials;
+    var credsForDescriptorIso = descriptor.isoMdocCredentials;
 
     if (requirement.rule == SubmissionRequirementRule.all) {
-      if (credsForDescriptor.isEmpty && descriptor.selfIssuable == null) {
+      bool isoFulfilled = true;
+      bool w3cFulfilled = true;
+      if ((credsForDescriptor == null || credsForDescriptor.isEmpty) &&
+          descriptor.selfIssuable == null) {
+        w3cFulfilled = false;
+      }
+      if ((credsForDescriptorIso == null || credsForDescriptorIso.isEmpty) &&
+          descriptor.selfIssuable == null) {
+        isoFulfilled = false;
+      }
+
+      if (w3cFulfilled == false && isoFulfilled == false) {
         fulfilled = false;
-        //throw Exception('Can\'t fulfill submission requirement');
       }
     }
 
-    if (creds.isEmpty) {
-      creds = credsForDescriptor;
-    } else {
-      List<VerifiableCredential> toAdd = [];
-      for (var c1 in credsForDescriptor) {
-        if (!_containsCredential(creds, c1)) toAdd.add(c1);
+    if (credsForDescriptor != null) {
+      if (creds.isEmpty) {
+        creds = credsForDescriptor;
+      } else {
+        List<VerifiableCredential> toAdd = [];
+        for (var c1 in credsForDescriptor) {
+          if (!_containsCredential(creds, c1)) toAdd.add(c1);
+        }
+        creds += toAdd;
       }
-      creds += toAdd;
     }
-    print(creds.length);
+
+    if (credsForDescriptorIso != null) {
+      if (creds.isEmpty) {
+        credsIso = credsForDescriptorIso;
+      } else {
+        List<iso.IssuerSignedObject> toAdd = [];
+        for (var c1 in credsForDescriptorIso) {
+          if (!_containsCredentialIso(credsIso, c1)) toAdd.add(c1);
+        }
+        credsIso += toAdd;
+      }
+    }
   }
 
   if (requirement.rule == SubmissionRequirementRule.pick) {
     int notLower = 0;
     if (requirement.count != null) notLower = requirement.count!;
     if (requirement.min != null) notLower = requirement.min!;
-    if (creds.length < notLower && selfIssuable.isEmpty) {
-      // throw Exception('Could not fullfill submission requirement');
+    if (creds.length + credsIso.length < notLower && selfIssuable.isEmpty) {
       fulfilled = false;
     }
   }
 
   return FilterResult(
       selfIssuable: selfIssuable.isNotEmpty ? selfIssuable : null,
-      credentials: creds,
+      credentials: creds.isEmpty ? null : creds,
+      isoMdocCredentials: credsIso.isEmpty ? null : credsIso,
       matchingDescriptorIds: accordingDescriptors,
       submissionRequirement: requirement,
       presentationDefinitionId: definitionId,
@@ -1410,23 +1423,43 @@ bool _containsCredential(
   return false;
 }
 
-FilterResult _processInputDescriptor(InputDescriptor descriptor,
-    FormatProperty? globalFormat, List<VerifiableCredential> creds) {
-  // evaluate Format
-  var localFormat = globalFormat;
-  if (descriptor.format != null) {
-    if (descriptor.format != null) {
-      if (descriptor.format!.ldpVp == null &&
-          descriptor.format!.ldp == null &&
-          descriptor.format!.ldpVc == null) {
-        throw Exception('Only supported Formats are Linked Data proofs');
-      }
-    } else {
-      localFormat = descriptor.format;
+bool _containsCredentialIso(
+    List<iso.IssuerSignedObject> toCheck, iso.IssuerSignedObject candidate) {
+  for (var c in toCheck) {
+    if (listEquals(
+        c.issuerAuth.signature ?? [], c.issuerAuth.signature ?? [])) {
+      return true;
     }
   }
 
-  List<VerifiableCredential> candidate = [];
+  return false;
+}
+
+FilterResult _processInputDescriptor(
+    InputDescriptor descriptor,
+    FormatProperty? globalFormat,
+    List<VerifiableCredential>? credentials,
+    List<iso.IssuerSignedObject>? isoMdocCredentials) {
+  // evaluate Format
+  var localFormat = descriptor.format ?? globalFormat;
+  if (localFormat != null) {
+    if (localFormat.ldpVp != null ||
+        localFormat.ldp != null ||
+        localFormat.ldpVc != null) {
+      if (credentials == null || credentials.isEmpty) {
+        throw Exception('No credentials for this format');
+      }
+    } else if (localFormat.mdocFormat != null) {
+      if (isoMdocCredentials == null) {
+        throw Exception('No credentials for this format');
+      }
+    } else {
+      throw Exception('unsupported Format');
+    }
+  }
+
+  List<VerifiableCredential> candidateW3C = [];
+  List<iso.IssuerSignedObject> candidateIso = [];
   if (descriptor.constraints != null) {
     if (descriptor.constraints!.isHolder != null) {
       throw UnimplementedError('is_holder property is not supported yet');
@@ -1437,48 +1470,62 @@ FilterResult _processInputDescriptor(InputDescriptor descriptor,
     if (descriptor.constraints!.statuses != null) {
       throw UnimplementedError('statuses feature is not supported yet');
     }
-    // if (descriptor.constraints!.subjectIsIssuer != null) {
-    //   if (descriptor.constraints!.subjectIsIssuer! == Limiting.required) {
-    //     return FilterResult(
-    //         credentials: [],
-    //         matchingDescriptorIds: [descriptor.id],
-    //         presentationDefinitionId: '',
-    //         selfIssuable: [descriptor.constraints!]);
-    //   }
-    // }
 
     if (descriptor.constraints!.fields != null) {
       var fields = descriptor.constraints!.fields!;
-      for (var cred in creds) {
+
+      if (credentials != null) {
+        List<Map<String, dynamic>> parsed;
         if (descriptor.constraints!.subjectIsIssuer != null &&
             descriptor.constraints!.subjectIsIssuer! == Limiting.required) {
-          if (!cred.isSelfIssued()) continue;
-        }
-        Set<bool> isCandidateSet = {};
-        for (var field in fields) {
-          if (field.predicate != null) {
-            throw UnimplementedError(
-                'Evaluating predicate feature is not supported yet');
-          }
-          bool pathMatch = false;
-          for (var path in field.path) {
-            var match = path.read(cred.toJson());
-            var matchList = match.toList();
-            if (matchList.isEmpty &&
-                (field.optional == null || field.optional == false)) continue;
-            if (field.filter != null) {
-              if (field.filter!.validate(matchList[0].value).isValid &&
-                  (field.optional == null || field.optional == false)) {
-                pathMatch = true;
-              }
-            } else {
-              pathMatch = true;
+          parsed = [];
+          for (var cred in credentials) {
+            if (cred.isSelfIssued()) {
+              parsed.add(cred.toJson());
             }
           }
-          isCandidateSet.add(pathMatch);
+        } else {
+          parsed = credentials.map((e) => e.toJson()).toList();
         }
-        if (isCandidateSet.length == 1 && isCandidateSet.first) {
-          candidate.add(cred);
+        List<Map<String, dynamic>> res;
+        (res, _) = _evaluateInputDescriptorFields(fields, parsed);
+        candidateW3C =
+            res.map((e) => VerifiableCredential.fromJson(e)).toList();
+      }
+      if (isoMdocCredentials != null) {
+        print('start filter mdoc');
+        List<Map<String, dynamic>> input = [];
+        for (int i = 0; i < isoMdocCredentials.length; i++) {
+          var c = isoMdocCredentials[i];
+          Map<String, dynamic> mapped = {};
+          mapped['_id'] = i;
+          for (var nameSpace in c.items.keys) {
+            var data = c.items[nameSpace]!;
+            var mapPerNS = <String, dynamic>{};
+            for (var i in data) {
+              mapPerNS[i.dataElementIdentifier] = i.dataElementValue;
+            }
+            mapped[nameSpace] = mapPerNS;
+          }
+
+          input.add(mapped);
+        }
+        List<Map<String, dynamic>> res;
+        Map<String, Map<String, bool>> res2;
+        print(input.length);
+        print(input);
+        (res, res2) = _evaluateInputDescriptorFields(fields, input);
+        print(res);
+        for (var candidate in res) {
+          var id = candidate['_id'] is int
+              ? candidate['_id']
+              : int.parse(candidate['_id']);
+          var cred = isoMdocCredentials[id];
+          var mso = iso.MobileSecurityObject.fromCbor(cred.issuerAuth.payload);
+          var r = iso.getDataToReveal(
+              iso.ItemsRequest(docType: mso.docType, nameSpaces: res2), cred);
+          candidateIso.add(
+              iso.IssuerSignedObject(issuerAuth: cred.issuerAuth, items: r));
         }
       }
     }
@@ -1487,7 +1534,7 @@ FilterResult _processInputDescriptor(InputDescriptor descriptor,
   //check against format
   if (localFormat != null) {
     List<VerifiableCredential> candidateFormatFiltered = [];
-    for (var cred in candidate) {
+    for (var cred in candidateW3C) {
       String credProofFormat = cred.proof!.type;
       if (localFormat.ldpVc != null) {
         if (localFormat.ldpVc!.proofType.contains(credProofFormat)) {
@@ -1495,22 +1542,74 @@ FilterResult _processInputDescriptor(InputDescriptor descriptor,
         }
       }
     }
+
     return FilterResult(
         selfIssuable: descriptor.constraints?.subjectIsIssuer != null
             ? [descriptor.constraints!]
             : null,
         credentials: candidateFormatFiltered,
         matchingDescriptorIds: [descriptor.id],
-        presentationDefinitionId: '');
+        presentationDefinitionId: '',
+        isoMdocCredentials: candidateIso);
   }
 
   return FilterResult(
       selfIssuable: descriptor.constraints?.subjectIsIssuer != null
           ? [descriptor.constraints!]
           : null,
-      credentials: candidate,
+      credentials: candidateW3C,
       matchingDescriptorIds: [descriptor.id],
-      presentationDefinitionId: '');
+      presentationDefinitionId: '',
+      isoMdocCredentials: candidateIso);
+}
+
+(List<Map<String, dynamic>>, Map<String, Map<String, bool>> namespaces)
+    _evaluateInputDescriptorFields(List<InputDescriptorField> inputFields,
+        List<Map<String, dynamic>> credentials) {
+  List<Map<String, dynamic>> candidate = [];
+  Map<String, Map<String, bool>> namespaces = {};
+  for (var cred in credentials) {
+    Set<bool> isCandidateSet = {};
+    for (var field in inputFields) {
+      if (field.predicate != null) {
+        throw UnimplementedError(
+            'Evaluating predicate feature is not supported yet');
+      }
+      bool pathMatch = false;
+
+      for (var path in field.path) {
+        var pathString = path.toString();
+        var split = pathString.split('[');
+        if (split.length >= 3) {
+          var ns = split[1].replaceAll(']', '').replaceAll('\'', '');
+          var prop = split[2].replaceAll(']', '').replaceAll('\'', '');
+          var nsMap = namespaces[ns] ?? <String, bool>{};
+          nsMap[prop] = false;
+          namespaces[ns] = nsMap;
+        }
+
+        var match = path.read(cred);
+        var matchList = match.toList();
+        if (matchList.isEmpty &&
+            (field.optional == null || field.optional == false)) {
+          continue;
+        }
+        if (field.filter != null) {
+          if (field.filter!.validate(matchList[0].value).isValid &&
+              (field.optional == null || field.optional == false)) {
+            pathMatch = true;
+          }
+        } else {
+          pathMatch = true;
+        }
+      }
+      isCandidateSet.add(pathMatch);
+    }
+    if (isCandidateSet.length == 1 && isCandidateSet.first) {
+      candidate.add(cred);
+    }
+  }
+  return (candidate, namespaces);
 }
 
 //***********************Private Methods***************************************
@@ -1618,50 +1717,6 @@ bool _checkHashes(Map<String, dynamic> w3c, Map<String, dynamic> plainHash) {
     }
   });
   return true;
-}
-
-Map<String, dynamic> mergeSdJwt(String sdJwt) {
-  Map<String, dynamic> merged = {};
-  var split = sdJwt.split('.');
-  if (split.length != 3) {
-    throw Exception('JWT consists of 3 parts');
-  }
-
-  var sig = split.last;
-  var disclosures = sig.split('~');
-  disclosures.removeAt(0);
-
-  Map<String, Disclosure> disclosureMap = {};
-
-  Map<String, dynamic> payload = jsonDecode(split[1]);
-  var hashAlg = payload['_sd_hash_alg'];
-  if (hashAlg != 'sha-256') {
-    throw UnimplementedError('Only sha-256 hashing is supported');
-  }
-
-  for (var d in disclosures) {
-    var hash = sha256.convert(ascii.encode(d));
-    disclosureMap[base64UrlEncode(hash.bytes)] = Disclosure.fromBase64(d);
-  }
-
-  return merged;
-}
-
-Map<String, dynamic> _mergeSd(
-    Map<String, dynamic> payload, Map<String, Disclosure> disclosures) {
-  Map<String, dynamic> merged = {};
-  payload.forEach((key, value) {
-    if (key != '_sd' || (value is Map && value.containsKey('_sd'))) {
-      merged[key] = value;
-    } else {
-      if (key == '_sd') {
-      } else {
-        merged[key] = _mergeSd(value, disclosures);
-      }
-    }
-  });
-
-  return merged;
 }
 
 class Disclosure {

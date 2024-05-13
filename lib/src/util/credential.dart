@@ -9,24 +9,26 @@ import 'package:dart_ssi/wallet.dart';
 Future<List<FilterResult>> searchForMatchingCredentials({
   required RequestPresentation message,
   required WalletStore wallet,
-  }
-) async {
+}) async {
   List<FilterResult> finalShow = [];
   var allCreds = wallet.getAllCredentials();
-  List<Map<String, dynamic>> creds = [];
+  List<VerifiableCredential> creds = [];
 
   allCreds.forEach((key, value) {
-    if (value.w3cCredential != '') creds.add(jsonDecode(value.w3cCredential));
+    if (value.w3cCredential != '') {
+      creds.add(VerifiableCredential.fromJson(jsonDecode(value.w3cCredential)));
+    }
   });
 
   var definition = message.presentationDefinition.first.presentationDefinition;
-  var filtered = searchCredentialsForPresentationDefinition(creds, definition);
+  var filtered = searchCredentialsForPresentationDefinition(definition,
+      credentials: creds);
 
   if (filtered.isNotEmpty) {
     //filter List of credentials -> check for duplicates by type
     for (var result in filtered) {
       List<VerifiableCredential> filteredCreds = [];
-      for (var cred in result.credentials) {
+      for (var cred in result.credentials ?? []) {
         if (filteredCreds.isEmpty) {
           filteredCreds.add(cred);
         } else {

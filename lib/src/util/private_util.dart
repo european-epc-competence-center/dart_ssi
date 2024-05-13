@@ -87,7 +87,7 @@ class PBKDF2 {
   }
 }
 
-class SyncChunkedConversionSink extends ChunkedConversionSink<Digest> {
+class SyncChunkedConversionSink implements ChunkedConversionSink<Digest> {
   final List<Digest> accumulated = <Digest>[];
 
   @override
@@ -123,4 +123,18 @@ String ed25519PublicToX25519Public(List<int> ed25519Public) {
   const xMultiCodec = [236, 1];
 
   return base58Bitcoin.encode(Uint8List.fromList(xMultiCodec + dst));
+}
+
+bool listEquals(List l1, List l2) {
+  if (l2.length != l1.length) {
+    return false;
+  }
+
+  for (int i = 0; i < l2.length; i++) {
+    if (l1[i] != l2[i]) {
+      return false;
+    }
+  }
+
+  return true;
 }

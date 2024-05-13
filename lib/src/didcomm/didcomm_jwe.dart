@@ -311,8 +311,9 @@ class DidcommEncryptedMessage implements JsonObject, DidcommMessage {
     List<int> sharedSecret;
     bool authcrypt = false;
     if (protectedHeaderAlg!.startsWith('ECDH-ES')) {
-      sharedSecret =
-          _ecdhES(receiverPrivate, epkPublic, apv: protectedHeaderApv);
+      sharedSecret = ecdhES(privateKeyJwk, protectedHeaderEpk!,
+          protectedHeaderAlg!, protectedHeaderEnc!,
+          apv: protectedHeaderApv);
     } else if (protectedHeaderAlg!.startsWith('ECDH-1PU')) {
       authcrypt = true;
       if (senderPublicKeyJwk == null) {

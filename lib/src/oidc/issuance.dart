@@ -142,7 +142,7 @@ class OidcTokenResponse implements JsonObject {
 
 class CredentialIssuerMetaData implements JsonObject {
   late String credentialIssuer;
-  String? authorizationServer;
+  List<String>? authorizationServer;
   late String credentialEndpoint;
   String? batchCredentialEndpoint;
   late List<CredentialsSupportedObject> credentialsSupported;

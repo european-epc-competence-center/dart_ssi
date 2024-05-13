@@ -2192,12 +2192,15 @@ void main() async {
         }
       };
 
-      var result = searchCredentialsForPresentationDefinition([
-        VerifiableCredential.fromJson(vc1),
-        VerifiableCredential.fromJson(vc2)
-      ], PresentationDefinition.fromJson(presentationDefinition));
+      var result = searchCredentialsForPresentationDefinition(
+        PresentationDefinition.fromJson(presentationDefinition),
+        credentials: [
+          VerifiableCredential.fromJson(vc1),
+          VerifiableCredential.fromJson(vc2)
+        ],
+      );
       expect(result.length, 1);
-      expect(result.first.credentials.length, 1);
+      expect(result.first.credentials!.length, 1);
     });
 
     test('filter issuer id (plain or object)', () {
@@ -2224,12 +2227,15 @@ void main() async {
           ]
         }
       };
-      var result = searchCredentialsForPresentationDefinition([
-        VerifiableCredential.fromJson(vc1),
-        VerifiableCredential.fromJson(vc3)
-      ], PresentationDefinition.fromJson(presentationDefinition));
+      var result = searchCredentialsForPresentationDefinition(
+        PresentationDefinition.fromJson(presentationDefinition),
+        credentials: [
+          VerifiableCredential.fromJson(vc1),
+          VerifiableCredential.fromJson(vc3)
+        ],
+      );
       expect(result.length, 1);
-      expect(result.first.credentials.length, 1);
+      expect(result.first.credentials!.length, 1);
     });
 
     test('filter for multiple fields', () {
@@ -2263,12 +2269,14 @@ void main() async {
           ]
         }
       };
-      var result = searchCredentialsForPresentationDefinition([
-        VerifiableCredential.fromJson(vc1),
-        VerifiableCredential.fromJson(vc2)
-      ], PresentationDefinition.fromJson(presentationDefinition));
+      var result = searchCredentialsForPresentationDefinition(
+          PresentationDefinition.fromJson(presentationDefinition),
+          credentials: [
+            VerifiableCredential.fromJson(vc1),
+            VerifiableCredential.fromJson(vc2)
+          ]);
       expect(result.length, 1);
-      expect(result.first.credentials.length, 1);
+      expect(result.first.credentials!.length, 1);
     });
   });
 }

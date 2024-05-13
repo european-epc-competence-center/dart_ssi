@@ -28,7 +28,7 @@ class DidcommPresentationRequestMessageHandler
     var allCredentialFlattened = res.fold(
         <VerifiableCredential>[],
         (List<VerifiableCredential> l, FilterResult e) =>
-            l..addAll(e.credentials));
+            l..addAll(e.credentials!));
 
     List<FilterResult> finalSend = [];
     for (var result in res) {
