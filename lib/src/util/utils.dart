@@ -94,12 +94,70 @@ Map<String, dynamic> multibaseKeyToJwk(String multibaseKey) {
   return jwk;
 }
 
+String jwkToMultiBase(Map<String, dynamic> jwk) {
+  var crv = jwk['crv'];
+  if (crv == 'Ed25519') {
+    return 'z${base58BitcoinEncode(Uint8List.fromList([
+          237,
+          1
+        ] + base64Decode(addPaddingToBase64(jwk['x']))))}';
+  } else if (crv == 'P-256') {
+    var c = elliptic.getP256();
+    var compressedHex = c.publicKeyToCompressedHex(elliptic.PublicKey(
+        c,
+        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['x']))),
+        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['y'])))));
+    var compressedBytes = hexDecode(compressedHex);
+    return 'z${base58BitcoinEncode(Uint8List.fromList([
+          128,
+          36
+        ] + compressedBytes))}';
+  } else if (crv == 'P-384') {
+    var c = elliptic.getP384();
+    var compressedHex = c.publicKeyToCompressedHex(elliptic.PublicKey(
+        c,
+        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['x']))),
+        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['y'])))));
+    var compressedBytes = hexDecode(compressedHex);
+    return 'z${base58BitcoinEncode(Uint8List.fromList([
+          129,
+          36
+        ] + compressedBytes))}';
+  } else if (crv == 'P-521') {
+    var c = elliptic.getP521();
+    var compressedHex = c.publicKeyToCompressedHex(elliptic.PublicKey(
+        c,
+        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['x']))),
+        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['y'])))));
+    var compressedBytes = hexDecode(compressedHex);
+    return 'z${base58BitcoinEncode(Uint8List.fromList([
+          130,
+          36
+        ] + compressedBytes))}';
+  } else {
+    throw Exception('unsupported curve $crv');
+  }
+}
+
+// if (keyType == KeyType.p521) {
+// c = getP521();
+// prefix = [130, 36];
+// } else if (keyType == KeyType.p384) {
+// c = getP384();
+// prefix = [129, 36];
+// } else {
+// c = getP256();
+// prefix = [128, 36];
+// }
+
 /// Converts json-String [credential] to dart Map.
 Map<String, dynamic> credentialToMap(dynamic credential) {
   if (credential is String) {
     return jsonDecode(credential);
   } else if (credential is Map<String, dynamic>) {
     return credential;
+  } else if (credential is Map<dynamic, dynamic>) {
+    return credential.map((key, value) => MapEntry(key as String, value));
   } else {
     throw Exception(
         'Unknown datatype ${credential.runtimeType} for $credential. Only String or Map<String, dynamic> accepted');

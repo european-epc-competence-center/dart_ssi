@@ -333,10 +333,11 @@ Signer _determineSignerForType(String type,
   }
 }
 
-Signer _determineSignerForJwsHeader(String jwsHeader,
+Signer _determineSignerForJwsHeader(dynamic jwsHeader,
     Function(Uri url, LoadDocumentOptions? options)? loadDocumentFunction) {
-  var header =
-      jsonDecode(utf8.decode(base64Decode(addPaddingToBase64(jwsHeader))));
+  var header = jwsHeader is Map
+      ? jwsHeader
+      : jsonDecode(utf8.decode(base64Decode(addPaddingToBase64(jwsHeader))));
   var alg = header['alg'];
   if (alg == 'EdDSA') {
     return EdDsaSigner(loadDocumentFunction);
@@ -1194,7 +1195,9 @@ Future<String> signStringOrJson(
     dynamic jwsHeader}) async {
   signer ??= jwk != null
       ? _determineSignerForJwk(jwk, null)
-      : _determineSignerForDid(didToSignWith!, null);
+      : jwsHeader != null
+          ? _determineSignerForJwsHeader(jwsHeader, loadDocument)
+          : _determineSignerForDid(didToSignWith!, null);
   return signer.sign(
       data: toSign,
       wallet: wallet,
