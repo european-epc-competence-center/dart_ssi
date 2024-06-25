@@ -728,7 +728,8 @@ class CredentialsSupportedObject implements JsonObject {
       order;
   // in draft 12 this is only a list of the proof types,
   // therefor the List of supported algs is always empty
-  Map<String, List<String>>? proofTypesSupported;
+  // alg values migth be strings (jwt/ldp_vp) or ints (cwt)
+  Map<String, List<dynamic>>? proofTypesSupported;
   List<OidcDisplayObject>? display;
   // credential specific
   Map<String, dynamic>? claims;
@@ -754,7 +755,7 @@ class CredentialsSupportedObject implements JsonObject {
     var format = jsonObject['format'];
     String? scope = jsonObject['scope'];
     List<String>? cbm, cs, o;
-    Map<String, List<String>>? pt;
+    Map<String, List<dynamic>>? pt;
     List<OidcDisplayObject>? display;
     if (jsonObject.containsKey('cryptographic_binding_methods_supported')) {
       cbm = (jsonObject['cryptographic_binding_methods_supported'] as List)
@@ -767,8 +768,7 @@ class CredentialsSupportedObject implements JsonObject {
         //draft 13
         for (var k in tmp.keys) {
           Map v = tmp[k];
-          var l =
-              (v['proof_signing_alg_values_supported'] as List).cast<String>();
+          var l = (v['proof_signing_alg_values_supported'] as List);
           pt[k] = l;
         }
       } else {
