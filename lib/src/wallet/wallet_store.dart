@@ -55,13 +55,17 @@ class WalletStore {
   final String standardConnectionPathX = 'm/457\'/2\'';
 
   /// Constructs a wallet at file-system path [path].
-  WalletStore(this._walletPath) {
+  WalletStore(this._walletPath, [String? nameExpansion]) {
     Hive.init(_walletPath);
-    _nameExpansion = _walletPath.replaceAll('/', '_').replaceAll(r'\', '_');
-    var split = _nameExpansion.split('_');
-    if (split.length > 3) {
-      _nameExpansion =
-          '${split[split.length - 3]}${split[split.length - 2]}${split[split.length - 1]}';
+    if (nameExpansion == null) {
+      _nameExpansion = _walletPath.replaceAll('/', '_').replaceAll(r'\', '_');
+      var split = _nameExpansion.split('_');
+      if (split.length > 3) {
+        _nameExpansion =
+            '${split[split.length - 3]}${split[split.length - 2]}${split[split.length - 1]}';
+      }
+    } else {
+      _nameExpansion = nameExpansion;
     }
     if (!Hive.isAdapterRegistered(CredentialAdapter().typeId)) {
       Hive.registerAdapter(CredentialAdapter());
