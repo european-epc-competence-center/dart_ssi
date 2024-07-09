@@ -1286,7 +1286,7 @@ class OidcCredentialRequest implements JsonObject {
       jsonObject['credential_definition'] = definition;
     } else if (format == OidcCredentialFormat.sdJwt) {
       if (credentialType != null) {
-        jsonObject['vct'] = credentialType;
+        jsonObject['vct'] = credentialType?.firstOrNull;
       }
       if (claims != null) {
         jsonObject['claims'] = _stuffToJson(claims!);
