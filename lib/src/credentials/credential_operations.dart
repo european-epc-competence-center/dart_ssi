@@ -11,6 +11,7 @@ import 'package:iso_mdoc/iso_mdoc.dart' as iso;
 import 'package:json_ld_processor/json_ld_processor.dart';
 import 'package:json_path/json_path.dart';
 import 'package:json_schema/json_schema.dart';
+import 'package:sd_jwt/sd_jwt.dart' as sd_jwt;
 import 'package:uuid/uuid.dart';
 import 'package:web3dart/credentials.dart';
 import 'package:web3dart/crypto.dart';
@@ -1264,7 +1265,8 @@ Future<bool> verifyStringSignature(String jws,
 List<FilterResult> searchCredentialsForPresentationDefinition(
     PresentationDefinition presentationDefinition,
     {List<VerifiableCredential>? credentials,
-    List<iso.IssuerSignedObject>? isoMdocCredentials}) {
+    List<iso.IssuerSignedObject>? isoMdocCredentials,
+    List<sd_jwt.SdJws>? sdJwtCredentials}) {
   var globalFormat = presentationDefinition.format;
   if (globalFormat != null) {
     if (globalFormat.ldpVp != null ||
@@ -1275,6 +1277,10 @@ List<FilterResult> searchCredentialsForPresentationDefinition(
       }
     } else if (globalFormat.mdocFormat != null) {
       if (isoMdocCredentials == null) {
+        throw Exception('No credentials for this format');
+      }
+    } else if (globalFormat.sdJwtVcFormat != null) {
+      if (sdJwtCredentials == null) {
         throw Exception('No credentials for this format');
       }
     } else {
@@ -1305,7 +1311,12 @@ List<FilterResult> searchCredentialsForPresentationDefinition(
 
       //credentials per descriptor
       var filteredCreds = _processInputDescriptor(
-          descriptor, globalFormat, credentials, isoMdocCredentials);
+          presentationDefinition.id,
+          descriptor,
+          globalFormat,
+          credentials,
+          isoMdocCredentials,
+          sdJwtCredentials);
       filterResultPerDescriptor[descriptor.id] = filteredCreds;
     }
 
@@ -1322,7 +1333,12 @@ List<FilterResult> searchCredentialsForPresentationDefinition(
       // Without any requirements, all input_descriptors must be fulfilled
       // but can be fulfilled with different credentials
       var result = _processInputDescriptor(
-          descriptor, globalFormat, credentials, isoMdocCredentials);
+          presentationDefinition.id,
+          descriptor,
+          globalFormat,
+          credentials,
+          isoMdocCredentials,
+          sdJwtCredentials);
       finalResult.add(result);
     }
     return finalResult;
@@ -1342,6 +1358,7 @@ FilterResult _processSubmissionRequirement(
   List<String> accordingDescriptors = descriptorGroups[requirement.from];
   List<VerifiableCredential> creds = [];
   List<iso.IssuerSignedObject> credsIso = [];
+  List<sd_jwt.SdJws> credsSd = [];
   List<InputDescriptorConstraints> selfIssuable = [];
   bool fulfilled = true;
 
@@ -1353,10 +1370,12 @@ FilterResult _processSubmissionRequirement(
 
     var credsForDescriptor = descriptor.credentials;
     var credsForDescriptorIso = descriptor.isoMdocCredentials;
+    var credsForDescriptorSd = descriptor.sdJwtCredentials;
 
     if (requirement.rule == SubmissionRequirementRule.all) {
       bool isoFulfilled = true;
       bool w3cFulfilled = true;
+      bool sdFulfilled = true;
       if ((credsForDescriptor == null || credsForDescriptor.isEmpty) &&
           descriptor.selfIssuable == null) {
         w3cFulfilled = false;
@@ -1365,8 +1384,14 @@ FilterResult _processSubmissionRequirement(
           descriptor.selfIssuable == null) {
         isoFulfilled = false;
       }
+      if ((credsForDescriptorSd == null || credsForDescriptorSd.isEmpty) &&
+          descriptor.selfIssuable == null) {
+        sdFulfilled = false;
+      }
 
-      if (w3cFulfilled == false && isoFulfilled == false) {
+      if (w3cFulfilled == false &&
+          isoFulfilled == false &&
+          sdFulfilled == false) {
         fulfilled = false;
       }
     }
@@ -1384,7 +1409,7 @@ FilterResult _processSubmissionRequirement(
     }
 
     if (credsForDescriptorIso != null) {
-      if (creds.isEmpty) {
+      if (credsIso.isEmpty) {
         credsIso = credsForDescriptorIso;
       } else {
         List<iso.IssuerSignedObject> toAdd = [];
@@ -1392,6 +1417,18 @@ FilterResult _processSubmissionRequirement(
           if (!_containsCredentialIso(credsIso, c1)) toAdd.add(c1);
         }
         credsIso += toAdd;
+      }
+    }
+
+    if (credsForDescriptorSd != null) {
+      if (creds.isEmpty) {
+        credsSd = credsForDescriptorSd;
+      } else {
+        List<sd_jwt.SdJws> toAdd = [];
+        for (var c1 in credsForDescriptorSd) {
+          if (!_containsCredentialSd(credsSd, c1)) toAdd.add(c1);
+        }
+        credsSd += toAdd;
       }
     }
   }
@@ -1409,6 +1446,7 @@ FilterResult _processSubmissionRequirement(
       selfIssuable: selfIssuable.isNotEmpty ? selfIssuable : null,
       credentials: creds.isEmpty ? null : creds,
       isoMdocCredentials: credsIso.isEmpty ? null : credsIso,
+      sdJwtCredentials: credsSd.isEmpty ? null : credsSd,
       matchingDescriptorIds: accordingDescriptors,
       submissionRequirement: requirement,
       presentationDefinitionId: definitionId,
@@ -1438,11 +1476,18 @@ bool _containsCredentialIso(
   return false;
 }
 
+bool _containsCredentialSd(List<sd_jwt.SdJws> toCheck, sd_jwt.SdJws candidate) {
+  var parsed = toCheck.map((e) => e.toCompactSerialization()).toList();
+  return parsed.contains(candidate.toCompactSerialization());
+}
+
 FilterResult _processInputDescriptor(
+    String definitionId,
     InputDescriptor descriptor,
     FormatProperty? globalFormat,
     List<VerifiableCredential>? credentials,
-    List<iso.IssuerSignedObject>? isoMdocCredentials) {
+    List<iso.IssuerSignedObject>? isoMdocCredentials,
+    List<sd_jwt.SdJws>? sdJwtCredentials) {
   // evaluate Format
   var localFormat = descriptor.format ?? globalFormat;
   if (localFormat != null) {
@@ -1456,6 +1501,10 @@ FilterResult _processInputDescriptor(
       if (isoMdocCredentials == null) {
         throw Exception('No credentials for this format');
       }
+    } else if (localFormat.sdJwtVcFormat != null) {
+      if (sdJwtCredentials == null || sdJwtCredentials.isEmpty) {
+        throw Exception('No credentials for this format');
+      }
     } else {
       throw Exception('unsupported Format');
     }
@@ -1463,6 +1512,8 @@ FilterResult _processInputDescriptor(
 
   List<VerifiableCredential> candidateW3C = [];
   List<iso.IssuerSignedObject> candidateIso = [];
+  List<sd_jwt.SdJws> candidateSdJwt = [];
+
   if (descriptor.constraints != null) {
     if (descriptor.constraints!.isHolder != null) {
       throw UnimplementedError('is_holder property is not supported yet');
@@ -1491,7 +1542,7 @@ FilterResult _processInputDescriptor(
           parsed = credentials.map((e) => e.toJson()).toList();
         }
         List<Map<String, dynamic>> res;
-        (res, _) = _evaluateInputDescriptorFields(fields, parsed);
+        (res, _, _) = _evaluateInputDescriptorFields(fields, parsed);
         candidateW3C =
             res.map((e) => VerifiableCredential.fromJson(e)).toList();
       }
@@ -1517,7 +1568,7 @@ FilterResult _processInputDescriptor(
         Map<String, Map<String, bool>> res2;
         print(input.length);
         print(input);
-        (res, res2) = _evaluateInputDescriptorFields(fields, input);
+        (res, res2, _) = _evaluateInputDescriptorFields(fields, input);
         print(res);
         for (var candidate in res) {
           var id = candidate['_id'] is int
@@ -1529,6 +1580,30 @@ FilterResult _processInputDescriptor(
               iso.ItemsRequest(docType: mso.docType, nameSpaces: res2), cred);
           candidateIso.add(
               iso.IssuerSignedObject(issuerAuth: cred.issuerAuth, items: r));
+        }
+      }
+
+      if (sdJwtCredentials != null) {
+        List<Map<String, dynamic>> input = [];
+        for (int i = 0; i < sdJwtCredentials.length; i++) {
+          var sdJws = sdJwtCredentials[i];
+          var sd = sdJws.unverified();
+          var c = sd.claims;
+          c['_id'] = i;
+          input.add(c);
+        }
+        List<Map<String, dynamic>> res;
+        List<JsonPath> res2;
+        (res, _, res2) = _evaluateInputDescriptorFields(fields, input);
+        print(res);
+
+        for (var candidate in res) {
+          var id = candidate['_id'] is int
+              ? candidate['_id']
+              : int.parse(candidate['_id']);
+          var cred = sdJwtCredentials[id];
+          var disclosed = cred.disclose(res2);
+          candidateSdJwt.add(disclosed);
         }
       }
     }
@@ -1552,8 +1627,9 @@ FilterResult _processInputDescriptor(
             : null,
         credentials: candidateFormatFiltered,
         matchingDescriptorIds: [descriptor.id],
-        presentationDefinitionId: '',
-        isoMdocCredentials: candidateIso);
+        presentationDefinitionId: definitionId,
+        isoMdocCredentials: candidateIso,
+        sdJwtCredentials: candidateSdJwt);
   }
 
   return FilterResult(
@@ -1562,15 +1638,21 @@ FilterResult _processInputDescriptor(
           : null,
       credentials: candidateW3C,
       matchingDescriptorIds: [descriptor.id],
-      presentationDefinitionId: '',
-      isoMdocCredentials: candidateIso);
+      presentationDefinitionId: definitionId,
+      isoMdocCredentials: candidateIso,
+      sdJwtCredentials: candidateSdJwt);
 }
 
-(List<Map<String, dynamic>>, Map<String, Map<String, bool>> namespaces)
-    _evaluateInputDescriptorFields(List<InputDescriptorField> inputFields,
-        List<Map<String, dynamic>> credentials) {
+(
+  List<Map<String, dynamic>>,
+  Map<String, Map<String, bool>> namespaces,
+  List<JsonPath>
+) _evaluateInputDescriptorFields(List<InputDescriptorField> inputFields,
+    List<Map<String, dynamic>> credentials) {
   List<Map<String, dynamic>> candidate = [];
   Map<String, Map<String, bool>> namespaces = {};
+  List<JsonPath> paths = [];
+
   for (var cred in credentials) {
     Set<bool> isCandidateSet = {};
     for (var field in inputFields) {
@@ -1581,6 +1663,7 @@ FilterResult _processInputDescriptor(
       bool pathMatch = false;
 
       for (var path in field.path) {
+        paths.add(path);
         var pathString = path.toString();
         var split = pathString.split('[');
         if (split.length >= 3) {
@@ -1612,7 +1695,8 @@ FilterResult _processInputDescriptor(
       candidate.add(cred);
     }
   }
-  return (candidate, namespaces);
+
+  return (candidate, namespaces, paths);
 }
 
 //***********************Private Methods***************************************

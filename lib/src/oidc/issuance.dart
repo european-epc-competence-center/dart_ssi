@@ -559,6 +559,9 @@ class CredentialIssuerMetaData implements JsonObject {
   late Map<String, CredentialsSupportedObject> credentialsSupported;
   List<OidcDisplayObject>? display;
 
+  /// If not null, batch issuance at credential endpoint is supported
+  int? batchCredentialIssuanceBatchSize;
+
   CredentialIssuerMetaData(
       {required this.credentialIssuer,
       this.authorizationServer,
@@ -589,6 +592,10 @@ class CredentialIssuerMetaData implements JsonObject {
     batchCredentialEndpoint = jsonObject['batch_credential_endpoint'];
     deferredCredentialEndpoint = jsonObject['deferred_credential_endpoint'];
     notificationEndpoint = jsonObject['notification_endpoint'];
+
+    // batch issuance as per draft 14
+    batchCredentialIssuanceBatchSize =
+        jsonObject['batch_credential_issuance']?['batch_size'];
 
     // encryption stuff as per draft 12
     if (jsonObject
@@ -692,6 +699,11 @@ class CredentialIssuerMetaData implements JsonObject {
       tmp['enc_values_supported'] = credentialResponseEncryptionEncSupported;
       tmp['encryption_required'] = credentialResponseEncryptionRequired;
       jsonObject['credential_response_encryption'] = tmp;
+    }
+    if (batchCredentialIssuanceBatchSize != null) {
+      jsonObject['batch_credential_issuance'] = {
+        'batch_size': batchCredentialIssuanceBatchSize
+      };
     }
     if (credentialIdentifiersSupported != null) {
       jsonObject['credential_identifiers_supported'] =
@@ -1118,7 +1130,12 @@ class OidcCredentialRequest implements JsonObject {
   String? format, credentialIdentifier;
   Map<String, dynamic>? responseEncryptionJwk;
   String? responseEncryptionAlg, responseEncryptionEnc;
-  CredentialRequestProof? proof;
+
+  /// Draft 11-13: there is only parameter proof; Draft 14 proofs parameter was added
+  /// This Variable stores content for both, because only one of them can be present
+  /// It is serialized as "proof" : {"proof_type" : "xyz" , "xyz" : "..."}, when this List contains only one element
+  /// and as "proofs" : {"xyz" : ["...1", "...2", ...]}, when there are more elements.
+  List<CredentialRequestProof>? proof;
   // credential specific
   List<String>? credentialType;
   List<String>? context;
@@ -1137,15 +1154,28 @@ class OidcCredentialRequest implements JsonObject {
 
   factory OidcCredentialRequest.fromJson(dynamic data) {
     var jsonObject = credentialToMap(data);
+    // Parameters for every format
     String? format = jsonObject['format'],
         credentialIdentifier = jsonObject['credential_identifier'];
     if (format == null && credentialIdentifier == null) {
       throw Exception(
           'Invalid Credential Request: format and credentialIdentifier null');
     }
-    CredentialRequestProof? proof;
+    List<CredentialRequestProof>? proofs;
     if (jsonObject.containsKey('proof')) {
-      proof = CredentialRequestProof.fromJson(jsonObject['proof']);
+      var proof = CredentialRequestProof.fromJson(jsonObject['proof']);
+      proofs = [proof];
+    }
+    if (jsonObject.containsKey('proofs')) {
+      Map proofObject = jsonObject['proofs'];
+      proofs = [];
+      for (var proofType in proofObject.keys) {
+        List p = proofObject[proofType];
+        for (var proofValue in p) {
+          proofs.add(CredentialRequestProof(
+              proofType: proofType, proofValue: proofValue));
+        }
+      }
     }
     Map? jwk = jsonObject['credential_encryption_jwk'];
     String? enc = jsonObject['credential_response_encryption_enc'],
@@ -1157,6 +1187,8 @@ class OidcCredentialRequest implements JsonObject {
       alg = tmp['alg'];
       enc = tmp['enc'];
     }
+
+    // format specific
     if (format == OidcCredentialFormat.ldpVc ||
         format == OidcCredentialFormat.jwtVcJsonLd) {
       Map definition = jsonObject['credential_definition'];
@@ -1173,7 +1205,7 @@ class OidcCredentialRequest implements JsonObject {
           credentialType: vcType?.cast<String>(),
           claims: subject,
           credentialIdentifier: credentialIdentifier,
-          proof: proof,
+          proof: proofs,
           responseEncryptionAlg: alg,
           responseEncryptionEnc: enc,
           responseEncryptionJwk:
@@ -1200,7 +1232,7 @@ class OidcCredentialRequest implements JsonObject {
           credentialType: vcType.cast<String>(),
           claims: subject,
           credentialIdentifier: credentialIdentifier,
-          proof: proof,
+          proof: proofs,
           responseEncryptionAlg: alg,
           responseEncryptionEnc: enc,
           responseEncryptionJwk:
@@ -1218,7 +1250,7 @@ class OidcCredentialRequest implements JsonObject {
           claims: claims,
           credentialType: doctype != null ? [doctype] : null,
           credentialIdentifier: credentialIdentifier,
-          proof: proof,
+          proof: proofs,
           responseEncryptionAlg: alg,
           responseEncryptionEnc: enc,
           responseEncryptionJwk:
@@ -1234,7 +1266,7 @@ class OidcCredentialRequest implements JsonObject {
           claims: claims,
           credentialType: [vct],
           credentialIdentifier: credentialIdentifier,
-          proof: proof,
+          proof: proofs,
           responseEncryptionAlg: alg,
           responseEncryptionEnc: enc,
           responseEncryptionJwk:
@@ -1242,7 +1274,7 @@ class OidcCredentialRequest implements JsonObject {
     } else {
       return OidcCredentialRequest(
           credentialIdentifier: credentialIdentifier,
-          proof: proof,
+          proof: proofs,
           responseEncryptionAlg: alg,
           responseEncryptionEnc: enc,
           responseEncryptionJwk:
@@ -1260,7 +1292,28 @@ class OidcCredentialRequest implements JsonObject {
       jsonObject['format'] = format;
     }
     if (proof != null) {
-      jsonObject['proof'] = proof!.toJson();
+      if (proof!.length == 1) {
+        jsonObject['proof'] = proof!.first.toJson();
+      } else {
+        List<String> jwt = [];
+        List<Map> ldp = [];
+        for (var entry in proof!) {
+          if (entry.proofType == 'jwt') {
+            jwt.add(entry.proofValue);
+          }
+          if (entry.proofType == 'ldp_vp') {
+            ldp.add(entry.proofValue);
+          }
+        }
+        Map<String, dynamic> proofObject = {};
+        if (jwt.isNotEmpty) {
+          proofObject['jwt'] = jwt;
+        }
+        if (ldp.isNotEmpty) {
+          proofObject['ldp_vp'] = ldp;
+        }
+        jsonObject['proofs'] = proofObject;
+      }
     }
     if (responseEncryptionJwk != null && responseEncryptionAlg != null) {
       Map<String, dynamic> tmp = {};
@@ -1301,6 +1354,71 @@ class OidcCredentialRequest implements JsonObject {
     }
 
     return jsonObject;
+  }
+
+  @override
+  String toString() {
+    return jsonEncode(toJson());
+  }
+}
+
+class OidcBatchCredentialRequest implements JsonObject {
+  List<OidcCredentialRequest> credentialRequests;
+
+  OidcBatchCredentialRequest(this.credentialRequests);
+
+  factory OidcBatchCredentialRequest.fromJson(dynamic data) {
+    var jsonObject = credentialToMap(data);
+    List requests = jsonObject['credential_requests'];
+
+    return OidcBatchCredentialRequest(
+        requests.map((e) => OidcCredentialRequest.fromJson(e)).toList());
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'credential_requests': credentialRequests.map((e) => e.toJson()).toList()
+    };
+  }
+
+  @override
+  String toString() {
+    return jsonEncode(toJson());
+  }
+}
+
+class OidcBatchCredentialResponse implements JsonObject {
+  List<OidcCredentialResponse> credentialResponses;
+  String? cNonce;
+  int? cNonceExpiresIn;
+
+  OidcBatchCredentialResponse(
+      this.credentialResponses, this.cNonce, this.cNonceExpiresIn);
+
+  factory OidcBatchCredentialResponse.fromJson(dynamic data) {
+    var jsonObject = credentialToMap(data);
+    List responses = jsonObject['credential_responses'];
+
+    return OidcBatchCredentialResponse(
+        responses.map((e) => OidcCredentialResponse.fromJson(e)).toList(),
+        jsonObject['c_nonce'],
+        jsonObject['c_nonce_expires_in']);
+  }
+  @override
+  Map<String, dynamic> toJson() {
+    Map<String, dynamic> data = {
+      'credential_responses':
+          credentialResponses.map((e) => e.toJson()).toList()
+    };
+    if (cNonce != null) {
+      data['c_nonce'] = cNonce;
+    }
+    if (cNonceExpiresIn != null) {
+      data['c_nonce_expires_in'] = cNonceExpiresIn;
+    }
+
+    return data;
   }
 
   @override

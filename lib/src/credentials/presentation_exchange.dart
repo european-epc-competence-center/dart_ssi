@@ -1,9 +1,11 @@
 import 'dart:convert';
 
 import 'package:dart_ssi/credentials.dart';
+import 'package:dart_ssi/src/oidc/issuance.dart';
 import 'package:iso_mdoc/iso_mdoc.dart';
 import 'package:json_path/json_path.dart';
 import 'package:json_schema/json_schema.dart';
+import 'package:sd_jwt/sd_jwt.dart';
 import 'package:uuid/uuid.dart';
 
 import '../util/types.dart';
@@ -600,6 +602,7 @@ class FormatProperty implements JsonObject {
   LinkedDataProofFormat? ldpVc;
   LinkedDataProofFormat? ldpVp;
   MdocFormat? mdocFormat;
+  SdJwtVcFormat? sdJwtVcFormat;
 
   FormatProperty(
       {this.jwt,
@@ -608,7 +611,8 @@ class FormatProperty implements JsonObject {
       this.ldp,
       this.ldpVc,
       this.ldpVp,
-      this.mdocFormat});
+      this.mdocFormat,
+      this.sdJwtVcFormat});
 
   FormatProperty.fromJson(dynamic formatJson) {
     var format = credentialToMap(formatJson);
@@ -631,6 +635,9 @@ class FormatProperty implements JsonObject {
     if (format.containsKey('mso_mdoc')) {
       mdocFormat = MdocFormat.fromJson(format['mso_mdoc']);
     }
+    if (format.containsKey('vc+sd-jwt')) {
+      sdJwtVcFormat = SdJwtVcFormat.fromJson(format['vc+sd-jwt']);
+    }
   }
 
   @override
@@ -643,6 +650,9 @@ class FormatProperty implements JsonObject {
     if (ldpVp != null) jsonObject['ldp_vp'] = ldpVp!.toJson();
     if (ldpVc != null) jsonObject['ldp_vc'] = ldpVc!.toJson();
     if (mdocFormat != null) jsonObject['mso_mdoc'] = mdocFormat!.toJson();
+    if (sdJwtVcFormat != null) {
+      jsonObject[OidcCredentialFormat.sdJwt] = sdJwtVcFormat!.toJson();
+    }
     return jsonObject;
   }
 
@@ -687,13 +697,47 @@ class MdocFormat implements JsonObject {
     if (jwtAlg.containsKey('alg')) {
       algorithms = jwtAlg['alg'].cast<String>();
     } else {
-      throw FormatException('JwtFormat needs alg property');
+      throw FormatException('Mdoc Format needs alg property');
     }
   }
 
   @override
   Map<String, dynamic> toJson() {
     return {'alg': algorithms};
+  }
+
+  @override
+  String toString() {
+    return jsonEncode(toJson());
+  }
+}
+
+class SdJwtVcFormat implements JsonObject {
+  List<String>? sdJwtAlgValues, kbJwtAlgValues;
+
+  SdJwtVcFormat({this.sdJwtAlgValues, this.kbJwtAlgValues});
+
+  SdJwtVcFormat.fromJson(dynamic jwtFormatJson) {
+    var jwtAlg = credentialToMap(jwtFormatJson);
+    if (jwtAlg.containsKey('sd-jwt_alg_values')) {
+      sdJwtAlgValues = jwtAlg['sd-jwt_alg_values'].cast<String>();
+    }
+
+    if (jwtAlg.containsKey('kb-jwt_alg_values')) {
+      kbJwtAlgValues = jwtAlg['kb-jwt_alg_values'].cast<String>();
+    }
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    Map<String, dynamic> json = {};
+    if (sdJwtAlgValues != null) {
+      json['sd-jwt_alg_values'] = sdJwtAlgValues;
+    }
+    if (kbJwtAlgValues != null) {
+      json['kb-jwt_alg_values'] = kbJwtAlgValues;
+    }
+    return json;
   }
 
   @override
@@ -741,6 +785,7 @@ class FilterResult implements JsonObject {
   List<InputDescriptorConstraints>? selfIssuable;
   bool fulfilled;
   List<IssuerSignedObject>? isoMdocCredentials;
+  List<SdJws>? sdJwtCredentials;
 
   FilterResult(
       {required this.credentials,
@@ -749,7 +794,8 @@ class FilterResult implements JsonObject {
       required this.presentationDefinitionId,
       this.selfIssuable,
       this.fulfilled = true,
-      this.isoMdocCredentials});
+      this.isoMdocCredentials,
+      this.sdJwtCredentials});
 
   @override
   Map<String, dynamic> toJson() {
