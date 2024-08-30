@@ -19,6 +19,24 @@ class Credential {
 
   Credential(this.hdPath, this.w3cCredential, this.plaintextCredential);
 
+    /// Convert a Credential object to a JSON-encodable Map
+  Map<String, dynamic> toJson() {
+    return {
+      'hdPath': hdPath,
+      'w3cCredential': w3cCredential,
+      'plaintextCredential': plaintextCredential,
+    };
+  }
+
+  /// Create a Credential object from a JSON map
+  factory Credential.fromJson(Map<String, dynamic> json) {
+    return Credential(
+      json['hdPath'] as String,
+      json['w3cCredential'] as String,
+      json['plaintextCredential'] as String,
+    );
+  }
+
   @override
   String toString() =>
       '$w3cCredential uses Path $hdPath an has this data: $plaintextCredential';
@@ -41,6 +59,24 @@ class Connection {
   String name;
 
   Connection(this.hdPath, this.otherDid, this.name);
+
+    /// Convert a Connection object to a JSON-encodable Map
+  Map<String, dynamic> toJson() {
+    return {
+      'hdPath': hdPath,
+      'otherDid': otherDid,
+      'name': name,
+    };
+  }
+
+  /// Create a Connection object from a JSON map
+  factory Connection.fromJson(Map<String, dynamic> json) {
+    return Connection(
+      json['hdPath'] as String,
+      json['otherDid'] as String,
+      json['name'] as String,
+    );
+  }
 
   @override
   String toString() =>
@@ -67,6 +103,26 @@ class ExchangeHistoryEntry {
   ExchangeHistoryEntry(
       this.timestamp, this.action, this.otherParty, this.shownAttributes);
 
+  /// Convert an ExchangeHistoryEntry object to a JSON-encodable Map
+  Map<String, dynamic> toJson() {
+    return {
+      'timestamp': timestamp.toIso8601String(), // Convert DateTime to string
+      'action': action,
+      'otherParty': otherParty,
+      'shownAttributes': shownAttributes,
+    };
+  }
+
+  /// Create an ExchangeHistoryEntry object from a JSON map
+  factory ExchangeHistoryEntry.fromJson(Map<String, dynamic> json) {
+    return ExchangeHistoryEntry(
+      DateTime.parse(json['timestamp']), // Convert string back to DateTime
+      json['action'] as String,
+      json['otherParty'] as String,
+      List<String>.from(json['shownAttributes']), // Ensure shownAttributes is a List<String>
+    );
+  }
+
   @override
   String toString() {
     return 'ExchangeHistoryEntry{timestamp: $timestamp, action: $action, otherParty: $otherParty, shownAttributes: $shownAttributes}';
@@ -86,6 +142,24 @@ class DidcommConversation {
   String myDid;
 
   DidcommConversation(this.lastMessage, this.protocol, this.myDid);
+
+  /// Convert a Connection object to a JSON-encodable Map
+  Map<String, dynamic> toJson() {
+    return {
+      'lastMessage': lastMessage,
+      'protocol': protocol,
+      'myDid': myDid,
+    };
+  }
+
+  /// Create a Connection object from a JSON map
+  factory DidcommConversation.fromJson(Map<String, dynamic> json) {
+    return DidcommConversation(
+      json['lastMessage'] as String,
+      json['protocol'] as String,
+      json['myDid'] as String,
+    );
+  }
 
   @override
   String toString() {
