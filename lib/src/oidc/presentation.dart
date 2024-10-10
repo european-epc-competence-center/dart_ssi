@@ -118,7 +118,7 @@ class ClientMetaData implements JsonObject {
     var jsonData = credentialToMap(data);
     if (jsonData.containsKey('jwks')) {
       var tmp = jsonData['jwks'] as Map;
-      var keys = tmp['keys'] as List<Map>;
+      var keys = (tmp['keys'] as List).cast<Map>();
       jwks = keys
           .map((e) => e.map((key, value) => MapEntry(key as String, value)))
           .toList();
