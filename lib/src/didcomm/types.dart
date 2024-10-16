@@ -1,4 +1,16 @@
-import '../util/types.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
+import 'package:crypto_keys/crypto_keys.dart';
+import 'package:dart_ssi/didcomm.dart';
+import 'package:dart_ssi/src/util/types.dart';
+import 'package:dart_ssi/src/wallet/wallet_store.dart';
+import 'package:elliptic/elliptic.dart' as elliptic;
+import 'package:web3dart/crypto.dart';
+import 'package:x25519/x25519.dart' as x25519;
+
+import '../util/utils.dart';
 
 enum DidcommProfiles {
   aip1,
@@ -28,7 +40,241 @@ enum DidcommMessageTyp {
   String get value => stringValues[this]!;
 }
 
-abstract class DidcommMessage implements JsonObject {}
+class DidcommMessage implements JsonObject {
+  Future<DidcommEncryptedMessage> encrypt({
+    KeyWrapAlgorithm keyWrapAlgorithm = KeyWrapAlgorithm.ecdh1PU,
+    EncryptionAlgorithm encryptionAlgorithm = EncryptionAlgorithm.a256cbc,
+    Map<String, dynamic>? senderPrivateKeyJwk,
+    WalletStore? wallet,
+    String? keyId,
+    required List<Map<String, dynamic>> recipientPublicKeyJwk,
+  }) async {
+    var plaintext = this;
+    if (keyWrapAlgorithm == KeyWrapAlgorithm.ecdh1PU &&
+        plaintext is DidcommPlaintextMessage &&
+        plaintext.from == null) {
+      throw Exception(
+          'For authcrypted messages the from-header of the plaintext message must not be null');
+    }
+    Map<String, dynamic> jweHeader = {};
+    jweHeader['enc'] = encryptionAlgorithm.value;
+    jweHeader['alg'] = keyWrapAlgorithm.value;
+
+    String curve, keyType;
+    if (wallet != null && keyId != null) {
+      var keyInfo = await wallet.getKeyInformation(keyId);
+      if (keyWrapAlgorithm == KeyWrapAlgorithm.ecdh1PU) {
+        jweHeader['apu'] = removePaddingFromBase64(
+            base64UrlEncode(utf8.encode(keyInfo['kid'])));
+      }
+      jweHeader['skid'] = keyInfo['kid'];
+      curve = keyInfo['crv']!;
+      keyType = keyInfo['kty']!;
+    } else if (senderPrivateKeyJwk != null) {
+      jweHeader['skid'] = senderPrivateKeyJwk['kid'];
+      curve = senderPrivateKeyJwk['crv']!;
+      keyType = senderPrivateKeyJwk['kty']!;
+      if (keyWrapAlgorithm == KeyWrapAlgorithm.ecdh1PU) {
+        jweHeader['apu'] = removePaddingFromBase64(
+            base64UrlEncode(utf8.encode(senderPrivateKeyJwk['kid'])));
+      }
+    } else {
+      throw Exception('No private Key');
+    }
+
+    List<String> receiverKeyIds = [];
+    for (Map<String, dynamic> key in recipientPublicKeyJwk) {
+      if (key['crv'] == curve) {
+        receiverKeyIds.add(key['kid']);
+      }
+    }
+    receiverKeyIds.sort();
+    String keyIdString = '';
+    for (var keyId in receiverKeyIds) {
+      keyIdString += '$keyId.';
+    }
+    if (keyIdString.isEmpty) {
+      throw Exception('Cant find keys with matching crv parameter');
+    }
+    keyIdString = keyIdString.substring(0, keyIdString.length - 1);
+    var apv = removePaddingFromBase64(
+        base64UrlEncode(sha256.convert(utf8.encode(keyIdString)).bytes));
+    jweHeader['apv'] = apv;
+
+    //1) Resolve dids to get public keys
+
+    //important: KeyAgreement section in diddoc
+    //apu = key-id of sender (first entry in keyAgreementArray) -> entry istsef (if did) or id of key-Object
+
+    //apv: get all key-ids in KeyAgreement _> search which match curve of sender key -> sort alphanumerical -> concat with . -> sha256 -> base64URL
+
+    //2) look for Key-Type and generate Ephermal Key
+
+    elliptic.Curve? c;
+    Object epkPrivate;
+    List<int> epkPublic = [];
+    if (curve.startsWith('P') || curve.startsWith('secp256k1')) {
+      if (curve == 'P-256') {
+        c = elliptic.getP256();
+      } else if (curve == 'P-384') {
+        c = elliptic.getP384();
+      } else if (curve == 'P-521') {
+        c = elliptic.getP521();
+      } else if (curve == 'secp256k1') {
+        c = elliptic.getSecp256k1();
+      } else {
+        throw UnimplementedError();
+      }
+
+      epkPrivate = c.generatePrivateKey();
+    } else if (curve.startsWith('X')) {
+      var eKeyPair = x25519.generateKeyPair();
+      epkPrivate = eKeyPair.privateKey;
+      epkPublic = eKeyPair.publicKey;
+    } else {
+      throw UnimplementedError();
+    }
+
+    Map<String, dynamic> epkJwk = {'kty': keyType, 'crv': curve};
+    if (epkPrivate is elliptic.PrivateKey) {
+      epkJwk['x'] = removePaddingFromBase64(
+          base64UrlEncode(intToBytes(epkPrivate.publicKey.X)));
+      epkJwk['y'] = removePaddingFromBase64(
+          base64UrlEncode(intToBytes(epkPrivate.publicKey.Y)));
+    } else if (epkPrivate is List<int>) {
+      epkJwk['x'] = removePaddingFromBase64(base64UrlEncode(epkPublic));
+    } else {
+      throw Exception('Unknown Key type');
+    }
+    jweHeader['epk'] = epkJwk;
+
+    Map<String, dynamic> epkPrivateJwk = Map.from(epkJwk);
+    if (epkPrivate is elliptic.PrivateKey) {
+      epkPrivateJwk['d'] =
+          removePaddingFromBase64(base64UrlEncode(epkPrivate.bytes));
+    } else if (epkPrivate is List<int>) {
+      epkPrivateJwk['d'] = removePaddingFromBase64(base64UrlEncode(epkPrivate));
+    } else {
+      throw Exception('Unknown Key type');
+    }
+
+    //3) generate symmetric CEK
+    SymmetricKey cek;
+    if (encryptionAlgorithm == EncryptionAlgorithm.a256cbc) {
+      cek = SymmetricKey.generate(512);
+    } else {
+      cek = SymmetricKey.generate(256);
+    }
+    Encrypter e;
+    if (encryptionAlgorithm == EncryptionAlgorithm.a256cbc) {
+      e = cek.createEncrypter(algorithms.encryption.aes.cbcWithHmac.sha512);
+    } else if (encryptionAlgorithm == EncryptionAlgorithm.a256gcm) {
+      e = cek.createEncrypter(algorithms.encryption.aes.gcm);
+    } else {
+      throw UnimplementedError();
+    }
+
+    //4) Generate IV
+
+    //5) build aad ( ASCII(BASE64URL(UTF8(JWE Protected Header))) )
+    var aad = ascii.encode(removePaddingFromBase64(
+        base64UrlEncode(utf8.encode(jsonEncode(jweHeader)))));
+    //6) encrypt and get tag
+    var encrypted = e.encrypt(
+        Uint8List.fromList(utf8.encode(plaintext.toString())),
+        additionalAuthenticatedData: aad);
+
+    // 7) Encrypt cek for all recipients
+    List<Map<String, dynamic>> recipients = [];
+    for (var key in recipientPublicKeyJwk) {
+      if (key['crv'] == curve) {
+        Map<String, dynamic> r = {};
+        r['header'] = {'kid': key['kid']};
+        var encryptedCek = await _encryptSymmetricKey(
+            cek, keyWrapAlgorithm.value, curve, key, epkPrivateJwk, apv,
+            c: c,
+            senderPrivateKeyJwk: senderPrivateKeyJwk,
+            wallet: wallet,
+            keyId: keyId,
+            tag: encrypted.authenticationTag);
+        r['encrypted_key'] =
+            removePaddingFromBase64(base64UrlEncode(encryptedCek.data));
+        recipients.add(r);
+      }
+    }
+
+    //9) put everything together
+    return DidcommEncryptedMessage(
+        protectedHeader: ascii.decode(aad),
+        tag: removePaddingFromBase64(
+            base64UrlEncode(encrypted.authenticationTag!)),
+        iv: removePaddingFromBase64(
+            base64UrlEncode(encrypted.initializationVector!)),
+        ciphertext: removePaddingFromBase64(base64UrlEncode(encrypted.data)),
+        recipients: recipients);
+  }
+
+  Future<EncryptionResult> _encryptSymmetricKey(
+      SymmetricKey symmetricKey,
+      String keyWrapAlgorithm,
+      String curve,
+      Map<String, dynamic> publicKeyJwk,
+      dynamic epkPrivate,
+      String apv,
+      {Map<String, dynamic>? senderPrivateKeyJwk,
+      WalletStore? wallet,
+      String? keyId,
+      List<int>? tag,
+      elliptic.Curve? c}) async {
+    //7) do ecdh to get shared Secret
+    List<int> sharedSecret;
+    if (keyWrapAlgorithm.startsWith('ECDH-ES')) {
+      sharedSecret = await ecdhES(
+          null, null, epkPrivate, publicKeyJwk, 'ECDH-ES', 'ECDH-ES+A256KW',
+          apv: apv);
+    } else if (keyWrapAlgorithm.startsWith('ECDH-1PU')) {
+      String kid;
+      if (wallet != null && keyId != null) {
+        var info = await wallet.getKeyInformation(keyId);
+        kid = info['kid'];
+      } else if (senderPrivateKeyJwk != null) {
+        kid = senderPrivateKeyJwk['kid'];
+      } else {
+        throw Exception('no key');
+      }
+      sharedSecret = await ecdh1PU(
+          wallet,
+          null,
+          keyId,
+          epkPrivate,
+          senderPrivateKeyJwk,
+          publicKeyJwk,
+          publicKeyJwk,
+          tag!,
+          keyWrapAlgorithm,
+          removePaddingFromBase64(base64Encode(utf8.encode(kid))),
+          apv);
+    } else {
+      throw UnimplementedError();
+    }
+
+    Map<String, dynamic> sharedSecretJwk = {
+      'kty': 'oct',
+      'k': base64UrlEncode(sharedSecret)
+    };
+
+    //8) Encrypt CEK with Key Wrap algo
+    var keyWrapKey = KeyPair.fromJwk(sharedSecretJwk);
+    Encrypter kw = keyWrapKey.publicKey!
+        .createEncrypter(algorithms.encryption.aes.keyWrap);
+    return kw.encrypt(symmetricKey.keyValue);
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{};
+  }
+}
 
 /// Combination of Key-Wrap and Key agreement algorithm
 enum KeyWrapAlgorithm {

@@ -5,6 +5,7 @@ import 'package:asn1lib/asn1lib.dart';
 import 'package:base_codecs/base_codecs.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dart_multihash/dart_multihash.dart';
+import 'package:dart_ssi/did.dart';
 import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
 import 'package:elliptic/ecdh.dart' as ecdh;
 import 'package:elliptic/elliptic.dart' as elliptic;
@@ -243,15 +244,15 @@ Future<String> buildCsrForDid(WalletStore wallet, String did,
     throw Exception('Only did:key with Ed25519 keys are supported now');
   }
 
-  String? privateKey;
-  privateKey = await wallet.getPrivateKeyForCredentialDid(did);
-  privateKey ??= await wallet.getPrivateKeyForConnectionDid(did);
-  if (privateKey == null) {
-    throw Exception('Could not find private Key for DID $did');
+  var ddo = await resolveDidDocument(did);
+  var parsedDdo = ddo.resolveKeyIds().convertAllKeysToJwk();
+  var jwk = parsedDdo.verificationMethod?.firstOrNull?.publicKeyJwk;
+
+  if (jwk == null) {
+    throw Exception('No public key found');
   }
 
-  var key = ed.PrivateKey(hexToBytes(privateKey).toList());
-  var pub = ed.public(key);
+  var pub = ed.PublicKey(base64Decode(addPaddingToBase64(jwk['x'])));
 
   var csr = ASN1Sequence();
   var cri = ASN1Sequence();
@@ -315,8 +316,7 @@ Future<String> buildCsrForDid(WalletStore wallet, String did,
   cri.add(publicKey);
 
   //sign
-  var sig = ed.sign(ed.PrivateKey(hexToBytes(privateKey).toList()),
-      Uint8List.fromList(cri.encodedBytes));
+  var sig = await wallet.sign(did, Uint8List.fromList(cri.encodedBytes));
   csr.add(cri);
   csr.add(sigId);
   csr.add(ASN1BitString(sig));
@@ -360,14 +360,12 @@ String getDateTimeNowString() {
   return xmlDate;
 }
 
-List<int> ecdhES(dynamic privateKey, dynamic publicKey, String alg, String enc,
-    {String? apu, String? apv}) {
-  List<int> z;
-  if (privateKey is elliptic.PrivateKey && publicKey is elliptic.PublicKey) {
-    z = ecdh.computeSecret(privateKey, publicKey);
-  } else if (privateKey is List<int> && publicKey is List<int>) {
-    z = x25519.X25519(privateKey, publicKey);
-  } else if (publicKey is Map && privateKey is Map) {
+Future<List<int>> calculateZ(WalletStore? wallet, String? keyId,
+    Map<String, dynamic> publicKey, Map<String, dynamic>? privateKey) async {
+  if (wallet != null && keyId != null) {
+    return wallet.calculateKeyAgreement(keyId, publicKey);
+  } else if (privateKey != null) {
+    List<int> z;
     // keys given as jwks
     var crv = privateKey['crv'];
     if (crv != publicKey['crv']) {
@@ -407,9 +405,24 @@ List<int> ecdhES(dynamic privateKey, dynamic publicKey, String alg, String enc,
     } else {
       throw UnimplementedError("Curve `$crv` not supported");
     }
+    return z;
   } else {
-    throw Exception('Unknown key-Type');
+    throw Exception('No private key');
   }
+}
+
+Future<List<int>> ecdhES(
+    WalletStore? wallet,
+    String? keyId,
+    Map<String, dynamic>? privateKey,
+    Map<String, dynamic> publicKey,
+    String alg,
+    String enc,
+    {String? apu,
+    String? apv}) async {
+  List<int> z = await calculateZ(wallet, keyId, publicKey, privateKey);
+
+  print(z);
 
   var keyDataLen = 128;
   Uint8List encAscii;
@@ -471,6 +484,63 @@ List<int> ecdhES(dynamic privateKey, dynamic publicKey, String alg, String enc,
   var kdfIn = [0, 0, 0, 1] + z + otherInfo;
   var digest = sha256.convert(kdfIn);
   return digest.bytes.sublist(0, keyDataLen ~/ 8);
+}
+
+Future<List<int>> ecdh1PU(
+    WalletStore? wallet,
+    String? keyIdPrivate1,
+    String? keyIdPrivate2,
+    Map<String, dynamic>? private1,
+    Map<String, dynamic>? private2,
+    Map<String, dynamic> public1,
+    Map<String, dynamic> public2,
+    List<int> tag,
+    String keyWrapAlgorithm,
+    String apu,
+    String apv) async {
+  print('---');
+  print(keyIdPrivate1);
+  print(keyIdPrivate2);
+  print(private1);
+  print(private2);
+  print(public1);
+  print(public2);
+  print(tag);
+  print(keyWrapAlgorithm);
+  print(apu);
+  print(apv);
+  print('_____');
+  var ze = await calculateZ(wallet, keyIdPrivate1, public1, private1);
+  var zs = await calculateZ(wallet, keyIdPrivate2, public2, private2);
+
+  var z = ze + zs;
+
+  //Didcomm only uses A256KW
+  var keyDataLen = 256;
+  var cctagLen = _int32BigEndianBytes(tag.length);
+  var suppPubInfo = _int32BigEndianBytes(keyDataLen) + cctagLen + tag;
+
+  var encAscii = ascii.encode(keyWrapAlgorithm);
+  var encLength = _int32BigEndianBytes(encAscii.length);
+
+  var partyU = base64Decode(addPaddingToBase64(apu));
+  var partyULength = _int32BigEndianBytes(partyU.length);
+
+  var partyV = base64Decode(addPaddingToBase64(apv));
+  var partyVLength = _int32BigEndianBytes(partyV.length);
+
+  var otherInfo = encLength +
+      encAscii +
+      partyULength +
+      partyU +
+      partyVLength +
+      partyV +
+      suppPubInfo;
+
+  var kdfIn = [0, 0, 0, 1] + z + otherInfo;
+  var digest = sha256.convert(kdfIn);
+
+  return digest.bytes;
 }
 
 Uint8List _int32BigEndianBytes(int value) =>

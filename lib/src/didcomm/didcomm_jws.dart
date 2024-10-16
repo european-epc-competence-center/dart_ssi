@@ -39,7 +39,7 @@ bool isSignedMessage(dynamic message) {
 }
 
 /// A signed didcomm message
-class DidcommSignedMessage implements JsonObject, DidcommMessage {
+class DidcommSignedMessage extends DidcommMessage {
   late DidcommMessage payload;
   List<SignatureObject>? signatures;
   String? _base64Payload;

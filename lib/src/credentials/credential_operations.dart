@@ -296,8 +296,6 @@ Signer _determineSignerForDid(String did,
     Function(Uri url, LoadDocumentOptions? options)? loadDocumentFunction) {
   if (did.startsWith('did:key:z6Mk')) {
     return EdDsaSigner(loadDocumentFunction);
-  } else if (did.startsWith('did:ethr')) {
-    return EcdsaRecoverySignature(loadDocumentFunction);
   } else if (did.startsWith('did:key:zDn') ||
       did.startsWith('did:key:z82') ||
       did.startsWith('did:key:z2J9') ||
@@ -315,7 +313,7 @@ Signer _determineSignerForJwk(Map<String, dynamic> jwk,
   } else if (jwk['crv'] == 'Ed25519') {
     return EdDsaSigner(loadDocumentFunction);
   } else if (jwk['crv'] == 'secp256k1') {
-    return EcdsaRecoverySignature(loadDocumentFunction);
+    return Es256k1Signer();
   } else {
     throw Exception('could not examine signature type');
   }
@@ -325,8 +323,6 @@ Signer _determineSignerForType(String type,
     Function(Uri url, LoadDocumentOptions? options) loadDocumentFunction) {
   if (type == 'Ed25519Signature2020') {
     return EdDsaSigner(loadDocumentFunction);
-  } else if (type == 'EcdsaSecp256k1RecoverySignature2020') {
-    return EcdsaRecoverySignature(loadDocumentFunction);
   } else if (type == 'JsonWebSignature2020') {
     return JsonWebSignature2020Signer(loadDocumentFunction);
   } else {
@@ -342,8 +338,6 @@ Signer _determineSignerForJwsHeader(dynamic jwsHeader,
   var alg = header['alg'];
   if (alg == 'EdDSA') {
     return EdDsaSigner(loadDocumentFunction);
-  } else if (alg == 'ES256K-R') {
-    return EcdsaRecoverySignature(loadDocumentFunction);
   } else if (alg == 'ES256') {
     return Es256Signer();
   } else if (alg == 'ES256K') {
@@ -368,9 +362,7 @@ Signer _determineSignerForJwsHeader(dynamic jwsHeader,
 /// if it has the code `sigErr` something went wrong during signature check.
 /// If a RevokedException has code `rev` or `sus` the credential was revoked or suspended, if it has code `revErr` something went wrong during revocation check.
 Future<bool> verifyCredential(dynamic credential,
-    {Erc1056? erc1056,
-    RevocationRegistry? revocationRegistry,
-    String? expectedChallenge,
+    {String? expectedChallenge,
     Signer Function(
             String typeMatch,
             Function(Uri url, LoadDocumentOptions? options)
@@ -390,15 +382,15 @@ Future<bool> verifyCredential(dynamic credential,
     throw Exception('no proof section found');
   }
 
-  var revoked = await checkForRevocation(credential,
-      erc1056: erc1056, revocationRegistry: revocationRegistry);
+  var revoked = await checkForRevocation(
+    credential,
+  );
   if (revoked) {
     throw RevokedException('Credential was revoked', 'rev');
   }
 
   // determine issuer
   var issuerDid = getIssuerDidFromCredential(credential);
-  if (erc1056 != null) issuerDid = await erc1056.identityOwner(issuerDid);
 
   // verify proof
   Map<String, dynamic> proof = credMap['proof'];
@@ -423,8 +415,7 @@ Future<bool> verifyCredential(dynamic credential,
   return verified;
 }
 
-Future<bool> checkForRevocation(dynamic credential,
-    {Erc1056? erc1056, RevocationRegistry? revocationRegistry}) async {
+Future<bool> checkForRevocation(dynamic credential) async {
   Map<String, dynamic> credMap;
   if (credential is VerifiableCredential) {
     credMap = credential.toJson();
@@ -436,16 +427,7 @@ Future<bool> checkForRevocation(dynamic credential,
   if (credMap.containsKey('credentialStatus')) {
     var credStatus = credMap['credentialStatus'];
 
-    if (credStatus['type'] == 'EthereumRevocationList') {
-      if (revocationRegistry != null) {
-        revocationRegistry.setContract(credStatus['id']);
-        var revoked = await revocationRegistry
-            .isRevoked(getHolderDidFromCredential(credMap));
-        if (revoked) throw RevokedException('Credential was revoked', 'rev');
-      } else {
-        throw RevokedException('Revocation contract needed', 'revErr');
-      }
-    } else if (credStatus['type'] == 'RevocationList2020Status') {
+    if (credStatus['type'] == 'RevocationList2020Status') {
       var status = RevocationList2020Status.fromJson(credStatus);
       var res = await get(Uri.parse(status.revocationListCredential),
               headers: {'Accept': 'application/json'})
@@ -531,7 +513,6 @@ class SignatureException implements Exception {
 
   @override
   String toString() {
-    // TODO: implement toString
     return '$code: $message';
   }
 }
@@ -668,10 +649,7 @@ Future<String> buildPresentation(
     for (var element in additionalDids) {
       var signer = _determineSignerForDid(element, loadDocumentFunction);
       var t = signer.runtimeType;
-      if (t == EcdsaRecoverySignature &&
-          !context.contains(ecdsaRecoveryContextIri)) {
-        context.add(ecdsaRecoveryContextIri);
-      } else if (t == EdDsaSigner && !context.contains(ed25519ContextIri)) {
+      if (t == EdDsaSigner && !context.contains(ed25519ContextIri)) {
         context.add(ed25519ContextIri);
       }
       proofList.add(await signer.buildProof(presentation, wallet, element,
@@ -690,9 +668,7 @@ Future<String> buildPresentation(
 ///
 /// It uses erc1056 to look up the current owner of the dids a proof is given in [presentation].
 Future<bool> verifyPresentation(dynamic presentation, String challenge,
-    {Erc1056? erc1056,
-    RevocationRegistry? revocationRegistry,
-    Signer? signer,
+    {Signer? signer,
     Signer Function(
             String typeMatch,
             Function(Uri url, LoadDocumentOptions? options)
@@ -747,8 +723,6 @@ Future<bool> verifyPresentation(dynamic presentation, String challenge,
           .type
           .contains('PublicKeyCertificate')) {
         verified = await verifyCredential(element,
-            erc1056: erc1056,
-            revocationRegistry: revocationRegistry,
             signerSelector: signerSelector,
             loadDocumentFunction: loadDocumentFunction,
             issuerJwk: issuerJwk[getIssuerDidFromCredential(element)]);
@@ -757,7 +731,6 @@ Future<bool> verifyPresentation(dynamic presentation, String challenge,
         throw Exception('A credential could not been verified');
       } else {
         var did = getHolderDidFromCredential(element);
-        if (erc1056 != null) did = await erc1056.identityOwner(did);
         if (did.isNotEmpty && did.startsWith('did:')) {
           if (!VerifiableCredential.fromJson(element)
               .type
@@ -781,7 +754,6 @@ Future<bool> verifyPresentation(dynamic presentation, String challenge,
   await Future.forEach(proofs, (dynamic element) async {
     String verifMeth = element['verificationMethod'];
     if (verifMeth.contains('#')) verifMeth = verifMeth.split('#').first;
-    if (erc1056 != null) verifMeth = await erc1056.identityOwner(verifMeth);
     var signer = signerSelector.call(element['type'], loadDocumentFunction);
     if (holderDids.contains(verifMeth)) holderDids.remove(verifMeth);
     if (!await signer.verifyProof(element, presentationMap, verifMeth,

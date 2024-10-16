@@ -40,7 +40,7 @@ bool isPlaintextMessage(dynamic message) {
 }
 
 /// A plaintext-Message (json-web message) as per didcomm specification
-class DidcommPlaintextMessage implements JsonObject, DidcommMessage {
+class DidcommPlaintextMessage extends DidcommMessage {
   List<dynamic>? to;
   String? from;
   late String id;

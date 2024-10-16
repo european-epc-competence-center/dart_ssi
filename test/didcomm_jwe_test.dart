@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:dart_ssi/did.dart';
 import 'package:dart_ssi/didcomm.dart';
+import 'package:dart_ssi/src/wallet/wallet_store.dart';
 import 'package:dart_ssi/util.dart';
 import 'package:elliptic/elliptic.dart' as elliptic;
 import 'package:test/expect.dart';
@@ -21,7 +24,7 @@ void main() async {
   });
 
   group('with fresh generated Keys', () {
-    test('A256GCM with ECDH-ES P-256', () {
+    test('A256GCM with ECDH-ES P-256', () async {
       var c = elliptic.getP256();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -49,19 +52,19 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
-          encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK);
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(privateKeyJwk: bobJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256GCM with ECDH-ES P-384', () {
+    test('A256GCM with ECDH-ES P-384', () async {
       var c = elliptic.getP384();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -89,19 +92,19 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
-          encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK);
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(privateKeyJwk: bobJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256GCM with ECDH-ES P-521', () {
+    test('A256GCM with ECDH-ES P-521', () async {
       var c = elliptic.getP521();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -127,19 +130,19 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
-          encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK);
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(privateKeyJwk: bobJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256GCM with ECDH-ES X25519', () {
+    test('A256GCM with ECDH-ES X25519', () async {
       var alice = x25519.generateKeyPair();
       var bob = x25519.generateKeyPair();
 
@@ -158,20 +161,20 @@ void main() async {
         'x': removePaddingFromBase64(base64UrlEncode(bob.publicKey)),
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
-          encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK);
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(privateKeyJwk: bobJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
 
-    test('A256GCM with ECDH-1PU P-256', () {
+    test('A256GCM with ECDH-1PU P-256', () async {
       var c = elliptic.getP256();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -199,18 +202,19 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK, aliceJWK);
+      var encrypted = await message.encrypt(
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(
+          privateKeyJwk: bobJWK, senderPublicKeyJwk: aliceJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256GCM with ECDH-1PU P-384', () {
+    test('A256GCM with ECDH-1PU P-384', () async {
       var c = elliptic.getP384();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -238,18 +242,19 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK, aliceJWK);
+      var encrypted = await message.encrypt(
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(
+          privateKeyJwk: bobJWK, senderPublicKeyJwk: aliceJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256GCM with ECDH-1PU P-521', () {
+    test('A256GCM with ECDH-1PU P-521', () async {
       var c = elliptic.getP521();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -277,18 +282,19 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK, aliceJWK);
+      var encrypted = await message.encrypt(
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(
+          privateKeyJwk: bobJWK, senderPublicKeyJwk: aliceJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256GCM with ECDH-1PU X25519', () {
+    test('A256GCM with ECDH-1PU X25519', () async {
       var alice = x25519.generateKeyPair();
       var bob = x25519.generateKeyPair();
 
@@ -307,19 +313,20 @@ void main() async {
         'x': removePaddingFromBase64(base64UrlEncode(bob.publicKey)),
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK, aliceJWK);
+      var encrypted = await message.encrypt(
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(
+          privateKeyJwk: bobJWK, senderPublicKeyJwk: aliceJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
 
-    test('A256CBC-HS512 with ECDH-ES P-256', () {
+    test('A256CBC-HS512 with ECDH-ES P-256', () async {
       var c = elliptic.getP256();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -347,18 +354,18 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK);
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(privateKeyJwk: bobJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256CBC-HS512 with ECDH-ES P-384', () {
+    test('A256CBC-HS512 with ECDH-ES P-384', () async {
       var c = elliptic.getP384();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -386,18 +393,18 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK);
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(privateKeyJwk: bobJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256CBC-HS512 with ECDH-ES P-521', () {
+    test('A256CBC-HS512 with ECDH-ES P-521', () async {
       var c = elliptic.getP521();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -425,18 +432,18 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK);
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(privateKeyJwk: bobJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256CBC-HS512 with ECDH-ES X25519', () {
+    test('A256CBC-HS512 with ECDH-ES X25519', () async {
       var alice = x25519.generateKeyPair();
       var bob = x25519.generateKeyPair();
 
@@ -455,19 +462,19 @@ void main() async {
         'x': removePaddingFromBase64(base64UrlEncode(bob.publicKey)),
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK);
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(privateKeyJwk: bobJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
 
-    test('A256CBC-HS512 with ECDH-1PU P-256', () {
+    test('A256CBC-HS512 with ECDH-1PU P-256', () async {
       var c = elliptic.getP256();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -495,17 +502,18 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK, aliceJWK);
+      var encrypted = await message.encrypt(
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(
+          privateKeyJwk: bobJWK, senderPublicKeyJwk: aliceJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256CBC-HS512 with ECDH-1PU P-384', () {
+    test('A256CBC-HS512 with ECDH-1PU P-384', () async {
       var c = elliptic.getP384();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -533,17 +541,18 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK, aliceJWK);
+      var encrypted = await message.encrypt(
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(
+          privateKeyJwk: bobJWK, senderPublicKeyJwk: aliceJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256CBC-HS512 with ECDH-1PU P-521', () {
+    test('A256CBC-HS512 with ECDH-1PU P-521', () async {
       var c = elliptic.getP521();
       var alice = c.generatePrivateKey();
       var bob = c.generatePrivateKey();
@@ -571,17 +580,18 @@ void main() async {
             base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK, aliceJWK);
+      var encrypted = await message.encrypt(
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(
+          privateKeyJwk: bobJWK, senderPublicKeyJwk: aliceJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
       expect(message.body, m2.body);
     });
-    test('A256CBC-HS512 with ECDH-1PU X25519', () {
+    test('A256CBC-HS512 with ECDH-1PU X25519', () async {
       var alice = x25519.generateKeyPair();
       var bob = x25519.generateKeyPair();
 
@@ -600,11 +610,12 @@ void main() async {
         'x': removePaddingFromBase64(base64UrlEncode(bob.publicKey)),
       };
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          senderPrivateKeyJwk: aliceJWK,
-          recipientPublicKeyJwk: [bobJWK],
-          plaintext: message);
-      var m2 = encrypted.decryptWithJwk(bobJWK, aliceJWK);
+      var encrypted = await message.encrypt(
+        senderPrivateKeyJwk: aliceJWK,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(
+          privateKeyJwk: bobJWK, senderPublicKeyJwk: aliceJWK);
       expect(m2 is DidcommPlaintextMessage, true);
       m2 = m2 as DidcommPlaintextMessage;
       expect(message.expiresTime, m2.expiresTime);
@@ -612,10 +623,263 @@ void main() async {
     });
   });
 
+  group('with wallet generated Keys', () {
+    late WalletStore wallet;
+
+    setUp(() async {
+      var dir = Directory('tests');
+      if (!dir.existsSync()) {
+        wallet = WalletStore('tests');
+        await wallet.openBoxes(password: 'password');
+      }
+    });
+
+    test('A256GCM with ECDH-ES P-256', () async {
+      var alice = await wallet.generateNewKey(keyType: KeyType.p384);
+      var bob = await wallet.generateNewKey(keyType: KeyType.p384);
+
+      var bobDDO = await resolveDidDocument(bob);
+      var bobJWK = bobDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        wallet: wallet,
+        keyId: alice,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(wallet: wallet);
+      expect(m2 is DidcommPlaintextMessage, true);
+      m2 = m2 as DidcommPlaintextMessage;
+      expect(message.expiresTime, m2.expiresTime);
+      expect(message.body, m2.body);
+    });
+    test('A256GCM with ECDH-ES P-384', () async {
+      var alice = await wallet.generateNewKey(keyType: KeyType.p256);
+      var bob = await wallet.generateNewKey(keyType: KeyType.p256);
+
+      var bobDDO = await resolveDidDocument(bob);
+      var bobJWK = bobDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        wallet: wallet,
+        keyId: alice,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(wallet: wallet);
+      expect(m2 is DidcommPlaintextMessage, true);
+      m2 = m2 as DidcommPlaintextMessage;
+      expect(message.expiresTime, m2.expiresTime);
+      expect(message.body, m2.body);
+    });
+    test('A256GCM with ECDH-ES P-521', () async {
+      var alice = await wallet.generateNewKey(keyType: KeyType.p521);
+      var bob = await wallet.generateNewKey(keyType: KeyType.p521);
+
+      var bobDDO = await resolveDidDocument(bob);
+      var bobJWK = bobDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        wallet: wallet,
+        keyId: alice,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(wallet: wallet);
+      expect(m2 is DidcommPlaintextMessage, true);
+      m2 = m2 as DidcommPlaintextMessage;
+      expect(message.expiresTime, m2.expiresTime);
+      expect(message.body, m2.body);
+    });
+    test('A256GCM with ECDH-ES X25519', () async {
+      var alice = await wallet.generateNewKey(keyType: KeyType.x25519);
+      var bob = await wallet.generateNewKey(keyType: KeyType.x25519);
+
+      var bobDDO = await resolveDidDocument(bob);
+      var bobJWK = bobDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+
+      var encrypted = await message.encrypt(
+        keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        wallet: wallet,
+        keyId: alice,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 = await encrypted.decrypt(wallet: wallet);
+      expect(m2 is DidcommPlaintextMessage, true);
+      m2 = m2 as DidcommPlaintextMessage;
+      expect(message.expiresTime, m2.expiresTime);
+      expect(message.body, m2.body);
+    });
+
+    test('A256GCM with ECDH-1PU P-256', () async {
+      var alice = await wallet.generateNewKey(keyType: KeyType.p256);
+      var bob = await wallet.generateNewKey(keyType: KeyType.p256);
+
+      var aliceDDO = await resolveDidDocument(alice);
+      var aliceJWK = aliceDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+
+      var bobDDO = await resolveDidDocument(bob);
+      var bobJWK = bobDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+      message.from = aliceJWK['kid'].split('#').first;
+      var encrypted = await message.encrypt(
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        wallet: wallet,
+        keyId: alice,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 =
+          await encrypted.decrypt(wallet: wallet, senderPublicKeyJwk: aliceJWK);
+      expect(m2 is DidcommPlaintextMessage, true);
+      m2 = m2 as DidcommPlaintextMessage;
+      expect(message.expiresTime, m2.expiresTime);
+      expect(message.body, m2.body);
+    });
+    test('A256GCM with ECDH-1PU P-384', () async {
+      var alice = await wallet.generateNewKey(keyType: KeyType.p384);
+      var bob = await wallet.generateNewKey(keyType: KeyType.p384);
+
+      var aliceDDO = await resolveDidDocument(alice);
+      var aliceJWK = aliceDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+
+      var bobDDO = await resolveDidDocument(bob);
+      var bobJWK = bobDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+      message.from = aliceJWK['kid'].split('#').first;
+      var encrypted = await message.encrypt(
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        wallet: wallet,
+        keyId: alice,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 =
+          await encrypted.decrypt(wallet: wallet, senderPublicKeyJwk: aliceJWK);
+      expect(m2 is DidcommPlaintextMessage, true);
+      m2 = m2 as DidcommPlaintextMessage;
+      expect(message.expiresTime, m2.expiresTime);
+      expect(message.body, m2.body);
+    });
+    test('A256GCM with ECDH-1PU P-521', () async {
+      var alice = await wallet.generateNewKey(keyType: KeyType.p521);
+      var bob = await wallet.generateNewKey(keyType: KeyType.p521);
+
+      var aliceDDO = await resolveDidDocument(alice);
+      var aliceJWK = aliceDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+
+      var bobDDO = await resolveDidDocument(bob);
+      var bobJWK = bobDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+
+      message.from = aliceJWK['kid'].split('#').first;
+
+      var encrypted = await message.encrypt(
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        wallet: wallet,
+        keyId: alice,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 =
+          await encrypted.decrypt(wallet: wallet, senderPublicKeyJwk: aliceJWK);
+      expect(m2 is DidcommPlaintextMessage, true);
+      m2 = m2 as DidcommPlaintextMessage;
+      expect(message.expiresTime, m2.expiresTime);
+      expect(message.body, m2.body);
+    });
+    test('A256GCM with ECDH-1PU X25519', () async {
+      var alice = await wallet.generateNewKey(keyType: KeyType.x25519);
+      var bob = await wallet.generateNewKey(keyType: KeyType.x25519);
+
+      var aliceDDO = await resolveDidDocument(alice);
+      var aliceJWK = aliceDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+
+      var bobDDO = await resolveDidDocument(bob);
+      var bobJWK = bobDDO
+          .resolveKeyIds()
+          .convertAllKeysToJwk()
+          .verificationMethod!
+          .first
+          .publicKeyJwk!;
+      message.from = aliceJWK['kid'].split('#').first;
+      var encrypted = await message.encrypt(
+        encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
+        wallet: wallet,
+        keyId: alice,
+        recipientPublicKeyJwk: [bobJWK],
+      );
+      var m2 =
+          await encrypted.decrypt(wallet: wallet, senderPublicKeyJwk: aliceJWK);
+      expect(m2 is DidcommPlaintextMessage, true);
+      m2 = m2 as DidcommPlaintextMessage;
+      expect(message.expiresTime, m2.expiresTime);
+      expect(message.body, m2.body);
+    });
+
+    tearDown(() {
+      var dir = Directory('tests');
+      if (dir.existsSync()) dir.delete(recursive: true);
+    });
+  });
+
   group('example form didcomm-Spec', () {
     test(
         'example2 ECDH-ES / A256CBC-HS512 decrypt with did:example:bob#key-p384-1',
-        () {
+        () async {
       var encrypted = DidcommEncryptedMessage.fromJson({
         "ciphertext":
             "HPnc9w7jK0T73Spifq_dcVJnONbT9MZ9oorDJFEBJAfmwYRqvs1rKue-udrNLTTH0qjjbeuji01xPRF5JiWyy-gSMX4LHdLhPxHxjjQCTkThY0kapofU85EjLPlI4ytbHiGcrPIezqCun4iDkmb50pwiLvL7XY1Ht6zPUUdhiV6qWoPP4qeY_8pfH74Q5u7K4TQ0uU3KP8CVZQuafrkOBbqbqpJV-lWpWIKxil44f1IT_GeIpkWvmkYxTa1MxpYBgOYa5_AUxYBumcIFP-b6g7GQUbN-1SOoP76EzxZU_louspzQ2HdEH1TzXw2LKclN8GdxD7kB0H6lZbZLT3ScDzSVSbvO1w1fXHXOeOzywuAcismmoEXQGbWZm7wJJJ2r",
@@ -646,7 +910,7 @@ void main() async {
         "y": "X_3HJBcKFQEG35PZbEOBn8u9_z8V1F9V1Kv-Vh0aSzmH-y9aOuDJUE3D4Hvmi5l7"
       };
 
-      var m = encrypted.decryptWithJwk(bobKeyJWK);
+      var m = await encrypted.decrypt(privateKeyJwk: bobKeyJWK);
       expect(m is DidcommPlaintextMessage, true);
       m = m as DidcommPlaintextMessage;
       expect(message.expiresTime, m.expiresTime);
@@ -655,7 +919,7 @@ void main() async {
 
     test(
         'example2 ECDH-ES / A256CBC-HS512 decrypt with did:example:bob#key-p384-2',
-        () {
+        () async {
       var encrypted = DidcommEncryptedMessage.fromJson({
         "ciphertext":
             "HPnc9w7jK0T73Spifq_dcVJnONbT9MZ9oorDJFEBJAfmwYRqvs1rKue-udrNLTTH0qjjbeuji01xPRF5JiWyy-gSMX4LHdLhPxHxjjQCTkThY0kapofU85EjLPlI4ytbHiGcrPIezqCun4iDkmb50pwiLvL7XY1Ht6zPUUdhiV6qWoPP4qeY_8pfH74Q5u7K4TQ0uU3KP8CVZQuafrkOBbqbqpJV-lWpWIKxil44f1IT_GeIpkWvmkYxTa1MxpYBgOYa5_AUxYBumcIFP-b6g7GQUbN-1SOoP76EzxZU_louspzQ2HdEH1TzXw2LKclN8GdxD7kB0H6lZbZLT3ScDzSVSbvO1w1fXHXOeOzywuAcismmoEXQGbWZm7wJJJ2r",
@@ -686,7 +950,7 @@ void main() async {
         "y": "W9LLaBjlWYcXUxOf6ECSfcXKaC3-K9z4hCoP0PS87Q_4ExMgIwxVCXUEB6nf0GDd"
       };
 
-      var m = encrypted.decryptWithJwk(bobKeyJWK);
+      var m = await encrypted.decrypt(privateKeyJwk: bobKeyJWK);
       expect(m is DidcommPlaintextMessage, true);
       m = m as DidcommPlaintextMessage;
       expect(message.expiresTime, m.expiresTime);
@@ -694,7 +958,7 @@ void main() async {
     });
 
     test('example3 ECDH-ES / A256GCM decrypt with did:example:bob#key-p521-1',
-        () {
+        () async {
       var encrypted = DidcommEncryptedMessage.fromJson({
         "ciphertext":
             "mxnFl4s8FRsIJIBVcRLv4gj4ru5R0H3BdvyBWwXV3ILhtl_moqzx9COINGomP4ueuApuY5xdMDvRHm2mLo6N-763wjNSjAibNrqVZC-EG24jjYk7RPZ26fEW4z87LHuLTicYCD4yHqilRbRgbOCT0Db5221Kec0HDZTXLzBqVwC2UMyDF4QT6Uz3fE4f_6BXTwjD-sEgM67wWTiWbDJ3Q6WyaOL3W4ukYANDuAR05-SXVehnd3WR0FOg1hVcNRao5ekyWZw4Z2ekEB1JRof3Lh6uq46K0KXpe9Pc64UzAxEID93SoJ0EaV_Sei8CXw2aJFmZUuCf8YISWKUz6QZxRvFKUfYeflldUm9U2tY96RicWgUhuXgv",
@@ -728,7 +992,7 @@ void main() async {
             "ATZVigRQ7UdGsQ9j-omyff6JIeeUv3CBWYsZ0l6x3C_SYqhqVV7dEG-TafCCNiIxs8qeUiXQ8cHWVclqkH4Lo1qH"
       };
 
-      var m = encrypted.decryptWithJwk(bobKeyJWK);
+      var m = await encrypted.decrypt(privateKeyJwk: bobKeyJWK);
       expect(m is DidcommPlaintextMessage, true);
       m = m as DidcommPlaintextMessage;
       expect(message.expiresTime, m.expiresTime);
@@ -736,7 +1000,7 @@ void main() async {
     });
 
     test('example3 ECDH-ES / A256GCM decrypt with did:example:bob#key-p521-2',
-        () {
+        () async {
       var encrypted = DidcommEncryptedMessage.fromJson({
         "ciphertext":
             "mxnFl4s8FRsIJIBVcRLv4gj4ru5R0H3BdvyBWwXV3ILhtl_moqzx9COINGomP4ueuApuY5xdMDvRHm2mLo6N-763wjNSjAibNrqVZC-EG24jjYk7RPZ26fEW4z87LHuLTicYCD4yHqilRbRgbOCT0Db5221Kec0HDZTXLzBqVwC2UMyDF4QT6Uz3fE4f_6BXTwjD-sEgM67wWTiWbDJ3Q6WyaOL3W4ukYANDuAR05-SXVehnd3WR0FOg1hVcNRao5ekyWZw4Z2ekEB1JRof3Lh6uq46K0KXpe9Pc64UzAxEID93SoJ0EaV_Sei8CXw2aJFmZUuCf8YISWKUz6QZxRvFKUfYeflldUm9U2tY96RicWgUhuXgv",
@@ -770,7 +1034,7 @@ void main() async {
             "AEJipR0Dc-aBZYDqN51SKHYSWs9hM58SmRY1MxgXANgZrPaq1EeGMGOjkbLMEJtBThdjXhkS5VlXMkF0cYhZELiH"
       };
 
-      var m = encrypted.decryptWithJwk(bobKeyJWK);
+      var m = await encrypted.decrypt(privateKeyJwk: bobKeyJWK);
       expect(m is DidcommPlaintextMessage, true);
       m = m as DidcommPlaintextMessage;
       expect(message.expiresTime, m.expiresTime);
@@ -779,7 +1043,7 @@ void main() async {
 
     test(
         'example3 ECDH-1PU/ A256CBC-HS512 decrypt with did:example:bob#key-x25519-1',
-        () {
+        () async {
       var encrypted = DidcommEncryptedMessage.fromJson({
         "ciphertext":
             "MJezmxJ8DzUB01rMjiW6JViSaUhsZBhMvYtezkhmwts1qXWtDB63i4-FHZP6cJSyCI7eU-gqH8lBXO_UVuviWIqnIUrTRLaumanZ4q1dNKAnxNL-dHmb3coOqSvy3ZZn6W17lsVudjw7hUUpMbeMbQ5W8GokK9ZCGaaWnqAzd1ZcuGXDuemWeA8BerQsfQw_IQm-aUKancldedHSGrOjVWgozVL97MH966j3i9CJc3k9jS9xDuE0owoWVZa7SxTmhl1PDetmzLnYIIIt-peJtNYGdpd-FcYxIFycQNRUoFEr77h4GBTLbC-vqbQHJC1vW4O2LEKhnhOAVlGyDYkNbA4DSL-LMwKxenQXRARsKSIMn7z-ZIqTE-VCNj9vbtgR",
@@ -820,7 +1084,8 @@ void main() async {
         "x": "avH0O2Y4tqLAq8y9zpianr8ajii5m4F_mICrzNlatXs"
       };
 
-      var m = encrypted.decryptWithJwk(bobKeyJWK, aliceJwk);
+      var m = await encrypted.decrypt(
+          privateKeyJwk: bobKeyJWK, senderPublicKeyJwk: aliceJwk);
       expect(m is DidcommPlaintextMessage, true);
       m = m as DidcommPlaintextMessage;
       expect(message.expiresTime, m.expiresTime);
@@ -829,7 +1094,7 @@ void main() async {
 
     test(
         'example3 ECDH-1PU/ A256CBC-HS512 decrypt with did:example:bob#key-x25519-2',
-        () {
+        () async {
       var encrypted = DidcommEncryptedMessage.fromJson({
         "ciphertext":
             "MJezmxJ8DzUB01rMjiW6JViSaUhsZBhMvYtezkhmwts1qXWtDB63i4-FHZP6cJSyCI7eU-gqH8lBXO_UVuviWIqnIUrTRLaumanZ4q1dNKAnxNL-dHmb3coOqSvy3ZZn6W17lsVudjw7hUUpMbeMbQ5W8GokK9ZCGaaWnqAzd1ZcuGXDuemWeA8BerQsfQw_IQm-aUKancldedHSGrOjVWgozVL97MH966j3i9CJc3k9jS9xDuE0owoWVZa7SxTmhl1PDetmzLnYIIIt-peJtNYGdpd-FcYxIFycQNRUoFEr77h4GBTLbC-vqbQHJC1vW4O2LEKhnhOAVlGyDYkNbA4DSL-LMwKxenQXRARsKSIMn7z-ZIqTE-VCNj9vbtgR",
@@ -870,7 +1135,8 @@ void main() async {
         "x": "avH0O2Y4tqLAq8y9zpianr8ajii5m4F_mICrzNlatXs"
       };
 
-      var m = encrypted.decryptWithJwk(bobKeyJWK, aliceJwk);
+      var m = await encrypted.decrypt(
+          privateKeyJwk: bobKeyJWK, senderPublicKeyJwk: aliceJwk);
       expect(m is DidcommPlaintextMessage, true);
       m = m as DidcommPlaintextMessage;
       expect(message.expiresTime, m.expiresTime);
@@ -879,7 +1145,7 @@ void main() async {
 
     test(
         'example3 ECDH-1PU/ A256CBC-HS512 decrypt with did:example:bob#key-x25519-3',
-        () {
+        () async {
       var encrypted = DidcommEncryptedMessage.fromJson({
         "ciphertext":
             "MJezmxJ8DzUB01rMjiW6JViSaUhsZBhMvYtezkhmwts1qXWtDB63i4-FHZP6cJSyCI7eU-gqH8lBXO_UVuviWIqnIUrTRLaumanZ4q1dNKAnxNL-dHmb3coOqSvy3ZZn6W17lsVudjw7hUUpMbeMbQ5W8GokK9ZCGaaWnqAzd1ZcuGXDuemWeA8BerQsfQw_IQm-aUKancldedHSGrOjVWgozVL97MH966j3i9CJc3k9jS9xDuE0owoWVZa7SxTmhl1PDetmzLnYIIIt-peJtNYGdpd-FcYxIFycQNRUoFEr77h4GBTLbC-vqbQHJC1vW4O2LEKhnhOAVlGyDYkNbA4DSL-LMwKxenQXRARsKSIMn7z-ZIqTE-VCNj9vbtgR",
@@ -920,7 +1186,8 @@ void main() async {
         "x": "avH0O2Y4tqLAq8y9zpianr8ajii5m4F_mICrzNlatXs"
       };
 
-      var m = encrypted.decryptWithJwk(bobKeyJWK, aliceJwk);
+      var m = await encrypted.decrypt(
+          privateKeyJwk: bobKeyJWK, senderPublicKeyJwk: aliceJwk);
       expect(m is DidcommPlaintextMessage, true);
       m = m as DidcommPlaintextMessage;
       expect(message.expiresTime, m.expiresTime);
@@ -1074,13 +1341,13 @@ void main() async {
 
       expect(await signedMessage.verify(aliceSigningKey), true);
 
-      var encrypted = DidcommEncryptedMessage.fromPlaintext(
-          senderPrivateKeyJwk: aliceEncryptionKey,
-          recipientPublicKeyJwk: [bobPublicKey],
-          plaintext: signedMessage);
+      var encrypted = await message.encrypt(
+        senderPrivateKeyJwk: aliceEncryptionKey,
+        recipientPublicKeyJwk: [bobPublicKey],
+      );
 
-      var decrypted =
-          encrypted.decryptWithJwk(bobPublicKey, aliceEncryptionKey);
+      var decrypted = await encrypted.decrypt(
+          privateKeyJwk: bobPublicKey, senderPublicKeyJwk: aliceEncryptionKey);
       expect(decrypted is DidcommSignedMessage, true);
       decrypted = decrypted as DidcommSignedMessage;
 

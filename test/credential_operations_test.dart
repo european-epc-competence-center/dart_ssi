@@ -2,32 +2,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:dart_ssi/credentials.dart';
-import 'package:dart_ssi/did.dart';
 import 'package:dart_ssi/src/credentials/jsonLdContext/json_web_signature_2020_context.dart';
 import 'package:dart_ssi/wallet.dart';
-import 'package:http/http.dart';
 import 'package:json_schema/json_schema.dart';
 import 'package:test/test.dart';
 import 'package:uuid/uuid.dart';
-import 'package:web3dart/web3dart.dart';
 
 void main() async {
-  const String rpcUrl = 'http://127.0.0.1:7545';
-  //const String rpcUrl = 'https://credentials.hs-mittweida.de:33005';
-
-  var erc1056 = Erc1056(rpcUrl,
-      contractAddress: '0x0eE301c92471234038E320153A7F650ab9a72e28');
-  var revocationRegistry = RevocationRegistry(rpcUrl);
-  var ganacheAccounts = WalletStore('ganache');
-  await ganacheAccounts.openBoxes('ganache');
-  await ganacheAccounts.initialize(
-      mnemonic:
-          'situate recall vapor van layer stage nerve wink gap vague muffin vacuum');
-
-  var ganacheDid6 = await ganacheAccounts.getDid('m/44\'/60\'/0\'/0/5');
-  var ganacheDid9 = await ganacheAccounts.getDid('m/44\'/60\'/0\'/0/8');
-
-  ganacheAccounts.storeCredential('', '', 'm/44\'/60\'/0\'/0/8');
   test('test get issuer did from Credential', () {
     String cred1 = '{"issuer": "did:ethr:123456"}';
     String cred2 = '{"issuer": {"id" : "did:ethr:123456", "name" : "HSMW"}}';
@@ -1232,8 +1213,7 @@ void main() async {
       var dir = Directory('tests');
       if (!dir.existsSync()) {
         wallet = WalletStore('tests');
-        await wallet.openBoxes('password');
-        await wallet.initialize();
+        await wallet.openBoxes(password: 'password');
         await wallet.initializeIssuer();
       }
       var cred = {
@@ -1248,25 +1228,8 @@ void main() async {
           plaintext, wallet.getStandardIssuerDid());
     });
 
-    test('check signed credential; no proof Options given; no manipulation',
-        () async {
-      var signed = await signCredential(wallet, w3c);
-      var signedMap = jsonDecode(signed) as Map<String, dynamic>;
-      expect(signedMap.containsKey('proof'), true);
-      expect(signedMap['proof']['verificationMethod'],
-          '${wallet.getStandardIssuerDid()}#controller');
-      expect(signedMap['proof']['type'], 'EcdsaSecp256k1RecoverySignature2020');
-      expect(signedMap['proof']['proofPurpose'], 'assertionMethod');
-      expect(signedMap['proof'].containsKey('created'), true);
-
-      expect(
-          await verifyCredential(signedMap,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
-          true);
-    });
-
     test('ed25519', () async {
-      var issuer = await wallet.getNextCredentialDID(KeyType.ed25519);
+      var issuer = await wallet.getNextCredentialDID(keyType: KeyType.ed25519);
       var credential = VerifiableCredential(
           context: [credentialsV1Iri, schemaOrgIri],
           type: ['VerifiableCredential', 'NameCredential'],
@@ -1285,8 +1248,29 @@ void main() async {
       expect(await verifyCredential(signedMap), true);
     });
 
+    test('secp256k1', () async {
+      var issuer =
+          await wallet.getNextCredentialDID(keyType: KeyType.secp256k1);
+      var credential = VerifiableCredential(
+          context: [credentialsV1Iri, schemaOrgIri],
+          type: ['VerifiableCredential', 'NameCredential'],
+          issuer: issuer,
+          credentialSubject: {'name': 'Mustermann'},
+          issuanceDate: DateTime.now());
+      var signed = await signCredential(wallet, credential.toJson());
+      var signedMap = jsonDecode(signed) as Map<String, dynamic>;
+      print(signed);
+      List signedContext = signedMap['@context'];
+      expect(signedContext.contains(jsonWebSignature2020ContextIri2), true);
+      expect(signedMap.containsKey('proof'), true);
+      expect(signedMap['proof']['proofPurpose'], 'assertionMethod');
+      expect(signedMap['proof'].containsKey('created'), true);
+
+      expect(await verifyCredential(signedMap), true);
+    });
+
     test('p256', () async {
-      var issuer = await wallet.getNextCredentialDID(KeyType.p256);
+      var issuer = await wallet.getNextCredentialDID(keyType: KeyType.p256);
       var credential = VerifiableCredential(
           context: [credentialsV1Iri, schemaOrgIri],
           type: ['VerifiableCredential', 'NameCredential'],
@@ -1305,7 +1289,7 @@ void main() async {
     });
 
     test('p384', () async {
-      var issuer = await wallet.getNextCredentialDID(KeyType.p384);
+      var issuer = await wallet.getNextCredentialDID(keyType: KeyType.p384);
       var credential = VerifiableCredential(
           context: [credentialsV1Iri, schemaOrgIri],
           type: ['VerifiableCredential', 'NameCredential'],
@@ -1324,7 +1308,7 @@ void main() async {
     });
 
     test('p521', () async {
-      var issuer = await wallet.getNextCredentialDID(KeyType.p521);
+      var issuer = await wallet.getNextCredentialDID(keyType: KeyType.p521);
       var credential = VerifiableCredential(
           context: [
             credentialsV1Iri,
@@ -1352,15 +1336,11 @@ void main() async {
       var signedMap = jsonDecode(signed) as Map<String, dynamic>;
       signedMap['credentialSubject']['id'] = '0x567';
       expect(signedMap.containsKey('proof'), true);
-      expect(signedMap['proof']['verificationMethod'],
-          '${wallet.getStandardIssuerDid()}#controller');
-      expect(signedMap['proof']['type'], 'EcdsaSecp256k1RecoverySignature2020');
+      expect(signedMap['proof']['type'], 'JsonWebSignature2020');
       expect(signedMap['proof']['proofPurpose'], 'assertionMethod');
       expect(signedMap['proof'].containsKey('created'), true);
 
-      expect(
-          () async => await verifyCredential(signedMap,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
+      expect(() async => await verifyCredential(signedMap),
           throwsA(predicate((SignatureException e) => e.code == 'sig')));
     });
 
@@ -1370,98 +1350,21 @@ void main() async {
       var signed = await signCredential(wallet, w3c);
       var signedMap = jsonDecode(signed) as Map<String, dynamic>;
       expect(signedMap.containsKey('proof'), true);
-      expect(signedMap['proof']['verificationMethod'],
-          '${wallet.getStandardIssuerDid()}#controller');
-      expect(signedMap['proof']['type'], 'EcdsaSecp256k1RecoverySignature2020');
+      expect(signedMap['proof']['type'], 'JsonWebSignature2020');
       expect(signedMap['proof']['proofPurpose'], 'assertionMethod');
       expect(signedMap['proof'].containsKey('created'), true);
 
       signedMap['proof']['created'] = DateTime.now().toUtc().toIso8601String();
 
-      expect(
-          () async => await verifyCredential(signedMap,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
+      expect(() async => await verifyCredential(signedMap),
           throwsA(predicate((SignatureException e) => e.code == 'sig')));
     });
 
     test('call verify without proof', () {
       expect(
-          () async => await verifyCredential(w3c,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
+          () async => await verifyCredential(w3c),
           throwsA(
               predicate((dynamic e) => e.message == 'no proof section found')));
-    });
-
-    group('credential revocation', () {
-      test('credential was revoked', () async {
-        var plaintext = {'@context': 'schema.org', 'name': 'Max', 'age': 20};
-        var rev = RevocationRegistry(rpcUrl);
-        var revAddress = await rev
-            .deploy(await ganacheAccounts.getPrivateKey('m/44\'/60\'/0\'/0/8'));
-        var cred = buildPlaintextCredential(plaintext, ganacheDid6);
-        var w3cCred = buildW3cCredentialwithHashes(cred, ganacheDid9,
-            revocationRegistryAddress: revAddress);
-        var signed = await signCredential(ganacheAccounts, w3cCred);
-
-        //before revocation
-        var verified = await verifyCredential(signed,
-            erc1056: erc1056, revocationRegistry: revocationRegistry);
-        expect(verified, true);
-
-        //revocation
-        await rev.revoke(
-            await ganacheAccounts.getPrivateKey('m/44\'/60\'/0\'/0/8'),
-            ganacheDid6);
-
-        //after revocation
-        expect(
-            () async => await verifyCredential(signed,
-                erc1056: erc1056, revocationRegistry: revocationRegistry),
-            throwsA(predicate(
-                (dynamic e) => e.message == 'Credential was revoked')));
-      });
-
-      test('unknown revocation method', () async {
-        var w3cMap = jsonDecode(w3c!);
-        var rev = {'type': 'RevocationList2020', 'id': 'http://example.com'};
-        w3cMap['credentialStatus'] = rev;
-        var signed = await signCredential(wallet, w3cMap);
-
-        expect(
-            () async => await verifyCredential(signed,
-                erc1056: erc1056, revocationRegistry: revocationRegistry),
-            throwsA(predicate((dynamic e) =>
-                e.message == 'Unknown Status-method : RevocationList2020')));
-      });
-    });
-
-    test('with owner change', () async {
-      var web3 = Web3Client(rpcUrl, Client());
-
-      var signed = await signCredential(wallet, w3c);
-      expect(
-          await verifyCredential(signed,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
-          true);
-
-      var tx = Transaction(
-          from: EthereumAddress.fromHex(ganacheDid6.substring(9)),
-          to: EthereumAddress.fromHex(
-              wallet.getStandardIssuerDid()!.substring(9)),
-          value: EtherAmount.fromInt(EtherUnit.ether, 1));
-
-      await web3.sendTransaction(
-          EthPrivateKey.fromHex(
-              await ganacheAccounts.getPrivateKey('m/44\'/60\'/0\'/0/5')),
-          tx);
-
-      await erc1056.changeOwner((await wallet.getStandardIssuerPrivateKey())!,
-          wallet.getStandardIssuerDid()!, await wallet.getNextCredentialDID());
-
-      expect(
-          await verifyCredential(signed,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
-          false);
     });
 
     tearDown(() {
@@ -1477,23 +1380,19 @@ void main() async {
     String? signed1, signed2, signed3;
     setUp(() async {
       var iss1 = WalletStore('testIss1');
-      await iss1.openBoxes('password1');
-      await iss1.initialize();
-      await iss1.initializeIssuer();
+      await iss1.openBoxes(password: 'password1');
+      await iss1.initializeIssuer(keyType: KeyType.ed25519);
 
       var iss2 = WalletStore('testIss2');
-      await iss2.openBoxes('password2');
-      await iss2.initialize();
-      await iss2.initializeIssuer();
+      await iss2.openBoxes(password: 'password2');
+      await iss2.initializeIssuer(keyType: KeyType.ed25519);
 
       var iss3 = WalletStore('testIss3');
-      await iss3.openBoxes('password3');
-      await iss3.initialize();
-      await iss3.initializeIssuer();
+      await iss3.openBoxes(password: 'password3');
+      await iss3.initializeIssuer(keyType: KeyType.ed25519);
 
       holder = WalletStore('holder');
-      await holder.openBoxes('passwordH');
-      await holder.initialize();
+      await holder.openBoxes(password: 'passwordH');
 
       var cred1 = {
         '@context': 'https://schema.org',
@@ -1524,12 +1423,12 @@ void main() async {
       plaintext2 = buildPlaintextCredential(cred2, didCred2);
       plaintext3 = buildPlaintextCredential(cred3, didCred3);
 
-      var w3cCred1 =
-          buildW3cCredentialwithHashes(plaintext1, iss1.getStandardIssuerDid());
-      var w3cCred2 =
-          buildW3cCredentialwithHashes(plaintext2, iss2.getStandardIssuerDid());
-      var w3cCred3 =
-          buildW3cCredentialwithHashes(plaintext3, iss3.getStandardIssuerDid());
+      var w3cCred1 = buildW3cCredentialwithHashes(
+          plaintext1, iss1.getStandardIssuerDid(KeyType.ed25519));
+      var w3cCred2 = buildW3cCredentialwithHashes(
+          plaintext2, iss2.getStandardIssuerDid(KeyType.ed25519));
+      var w3cCred3 = buildW3cCredentialwithHashes(
+          plaintext3, iss3.getStandardIssuerDid(KeyType.ed25519));
 
       signed1 = await signCredential(iss1, w3cCred1);
       signed2 = await signCredential(iss2, w3cCred2);
@@ -1556,13 +1455,7 @@ void main() async {
         verificationMethods.add(elem['verificationMethod']);
       });
 
-      expect(verificationMethods.contains('$didCred1#controller'), true);
-      expect(verificationMethods.contains('$didCred2#controller'), true);
-      expect(verificationMethods.contains('$didCred3#controller'), true);
-      expect(
-          await verifyPresentation(presentation, challenge,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
-          true);
+      expect(await verifyPresentation(presentation, challenge), true);
     });
 
     test('one nonce/challenge is manipulated', () async {
@@ -1574,27 +1467,9 @@ void main() async {
       presMap['proof'][0]['challenge'] = Uuid().v4();
 
       expect(
-          () async => await verifyPresentation(presMap, challenge,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
+          () async => await verifyPresentation(presMap, challenge),
           throwsA(predicate((dynamic e) =>
               e.message == 'a challenge do not match expected challenge')));
-    });
-
-    test('manipulated proof', () async {
-      var challenge = Uuid().v4();
-      var presentation = await buildPresentation(
-          [signed1, signed2, signed3], holder, challenge);
-      var presMap = jsonDecode(presentation) as Map;
-
-      presMap['proof'][0]['verificationMethod'] =
-          'did:ethr:0xC3d188C872e25c0370Ff3D2aA7268e2e13D11fe9';
-
-      expect(
-          () async => await verifyPresentation(presMap, challenge,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
-          throwsA(predicate((dynamic e) =>
-              e.message ==
-              'Proof for did:ethr:0xC3d188C872e25c0370Ff3D2aA7268e2e13D11fe9 could not been verified')));
     });
 
     test('not enough proofs', () async {
@@ -1606,8 +1481,10 @@ void main() async {
       presMap['proof'].removeAt(0);
 
       expect(
-          () async => await verifyPresentation(presMap, challenge,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
+          () async => await verifyPresentation(
+                presMap,
+                challenge,
+              ),
           throwsA(predicate(
               (dynamic e) => e.message == 'There are dids without a proof')));
     });
@@ -1621,10 +1498,7 @@ void main() async {
       var presMap = jsonDecode(presentation) as Map;
       List<dynamic> proofs = presMap['proof'];
       expect(proofs.length, 4);
-      expect(
-          await verifyPresentation(presentation, challenge,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
-          true);
+      expect(await verifyPresentation(presentation, challenge), true);
     });
 
     test('credential could not been verified (verifyCredential returns false)',
@@ -1636,78 +1510,8 @@ void main() async {
       presMap['verifiableCredential'][0]['issuer'] =
           await holder.getNextCredentialDID();
 
-      expect(
-          () async => await verifyPresentation(presMap, challenge,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
-          throwsA(predicate((SignatureException e) => e.code == 'sig')));
-    });
-
-    test('one holder did was changed', () async {
-      var challenge = Uuid().v4();
-      var presentation1 = await buildPresentation(
-          [signed1, signed2, signed3], holder, challenge);
-      expect(
-          await verifyPresentation(presentation1, challenge,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
-          true);
-
-      var web3 = Web3Client(rpcUrl, Client());
-
-      var tx = Transaction(
-          from: EthereumAddress.fromHex(ganacheDid6.substring(9)),
-          to: EthereumAddress.fromHex(didCred1!.substring(9)),
-          value: EtherAmount.fromInt(EtherUnit.ether, 1));
-
-      await web3.sendTransaction(
-          EthPrivateKey.fromHex(
-              await ganacheAccounts.getPrivateKey('m/44\'/60\'/0\'/0/5')),
-          tx);
-      var newDid = await holder.getNextCredentialDID();
-      await erc1056.changeOwner(
-          (await holder.getPrivateKeyForCredentialDid(didCred1!))!,
-          didCred1!,
-          newDid);
-
-      var newPath = holder.getCredential(newDid)!.hdPath;
-      holder.storeCredential('', '', newPath, credDid: didCred1);
-      var presentation2 = await buildPresentation(
-          [signed1, signed2, signed3], holder, challenge);
-      expect(
-          await verifyPresentation(presentation2, challenge,
-              erc1056: erc1056, revocationRegistry: revocationRegistry),
-          true);
-    });
-
-    group('undisclosed Credentials in presentation', () {
-      String? undisclosed1, undisclosed2, undisclosed3;
-      setUp(() {
-        undisclosed1 =
-            discloseValues(plaintext1, ['name', 'address.streetAddress']);
-        undisclosed2 = discloseValues(plaintext2, ['grades.1']);
-        undisclosed3 = discloseValues(plaintext3, ['rolle']);
-      });
-
-      test('all without manipulation', () async {
-        var challenge = Uuid().v4();
-        var presentation = await buildPresentation(
-            [signed1, signed2, signed3], holder, challenge,
-            disclosedCredentials: [undisclosed1, undisclosed2, undisclosed3]);
-        Map<String, dynamic> presMap = jsonDecode(presentation);
-        expect(presMap.containsKey('disclosedCredentials'), true);
-        expect(presMap['disclosedCredentials'].length, 3);
-        expect(await verifyPresentation(presentation, challenge), true);
-      });
-    });
-
-    tearDown(() {
-      var holder = Directory('holder');
-      if (holder.existsSync()) holder.delete(recursive: true);
-      var iss1 = Directory('testIss1');
-      if (iss1.existsSync()) iss1.delete(recursive: true);
-      var iss2 = Directory('testIss2');
-      if (iss2.existsSync()) iss2.delete(recursive: true);
-      var iss3 = Directory('testIss3');
-      if (iss3.existsSync()) iss3.delete(recursive: true);
+      expect(() async => await verifyPresentation(presMap, challenge),
+          throwsA(predicate((SignatureException e) => e.code == 'sigErr')));
     });
   });
 
@@ -1715,14 +1519,12 @@ void main() async {
     test('sign without any manipulation or key rotation', () async {
       String toSign = 'Its a String';
       WalletStore w = WalletStore('tests');
-      await w.openBoxes('password');
-      await w.initialize();
+      await w.openBoxes(password: 'password');
       var did = await w.getNextCredentialDID();
       var jws =
           await signStringOrJson(wallet: w, didToSignWith: did, toSign: toSign);
 
-      var verified = await verifyStringSignature(jws,
-          expectedDid: did, erc1056: erc1056, toSign: toSign);
+      var verified = await verifyStringSignature(jws, expectedDid: did);
 
       expect(verified, true);
 
@@ -1733,9 +1535,8 @@ void main() async {
     test('sign without any manipulation ed25519', () async {
       String toSign = 'Its a String';
       WalletStore w = WalletStore('tests');
-      await w.openBoxes('password');
-      await w.initialize();
-      var did = await w.getNextCredentialDID(KeyType.ed25519);
+      await w.openBoxes(password: 'password');
+      var did = await w.getNextCredentialDID(keyType: KeyType.ed25519);
       var jws =
           await signStringOrJson(wallet: w, didToSignWith: did, toSign: toSign);
 
@@ -2034,54 +1835,6 @@ void main() async {
       expect(paths.contains('friends.1.name'), true);
       expect(paths.contains('friends.0.age'), true);
       expect(paths.contains('friends.1.age'), true);
-    });
-  });
-
-  group('use other network', () {
-    late WalletStore wallet;
-    late Erc1056 ercWithId;
-
-    setUp(() async {
-      wallet = WalletStore('other');
-      await wallet.openBoxes();
-      await wallet.initialize(network: 'ropsten');
-      await wallet.initializeIssuer();
-      ercWithId = Erc1056(rpcUrl,
-          networkNameOrId: 'ropsten',
-          contractAddress: '0x0eE301c92471234038E320153A7F650ab9a72e28');
-    });
-
-    test('next did', () async {
-      var did = await wallet.getNextCredentialDID();
-      expect(did.startsWith('did:ethr:ropsten'), true);
-    });
-
-    test('sign String', () async {
-      var toSign = 'test';
-      var didToSignWith = await wallet.getNextConnectionDID();
-      var jws = await signStringOrJson(
-          wallet: wallet, didToSignWith: didToSignWith, toSign: toSign);
-      var checked = await verifyStringSignature(jws,
-          expectedDid: didToSignWith, erc1056: ercWithId);
-      expect(checked, true);
-    });
-
-    test('sign a credential', () async {
-      var cred = {'@context': 'schema.org', 'name': 'Max', 'age': 23};
-      var holderDid = await wallet.getNextCredentialDID();
-      var plain = buildPlaintextCredential(cred, holderDid);
-      expect(
-          wallet.getStandardIssuerDid()!.startsWith('did:ethr:ropsten'), true);
-      var w3c =
-          buildW3cCredentialwithHashes(plain, wallet.getStandardIssuerDid());
-      var signed = await signCredential(wallet, w3c);
-      expect(await verifyCredential(signed, erc1056: ercWithId), true);
-    });
-
-    tearDown(() {
-      if (Directory('other').existsSync()) {
-        Directory('other').delete(recursive: true);
-      }
     });
   });
 
