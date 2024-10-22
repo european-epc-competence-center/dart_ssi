@@ -98,18 +98,25 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
       var lci = _keyBox?.get('lastCredentialIndex');
       if (lci != null) {
         _keyBox!.put('lastIndex256k', lci);
-        _keyBox!.delete('lastCredentialIndex');
+      } else {
+        _keyBox!.put('lastIndex256k', 0);
       }
       var lcie = _keyBox?.get('lastCredentialIndexEd');
       if (lcie != null) {
         _keyBox!.put('lastIndexEd25519', lcie);
-        _keyBox!.delete('lastCredentialIndexEd');
+      } else {
+        _keyBox!.put('lastIndexEd25519', 0);
       }
       var lcix = _keyBox?.get('lastCredentialIndexX');
       if (lcix != null) {
         _keyBox!.put('lastIndexX25519', lcix);
-        _keyBox!.delete('lastCredentialIndexX');
+      } else {
+        _keyBox!.put('lastIndexX25519', 0);
       }
+
+      _keyBox!.put('lastCredentialIndex', _keyBox!.get('lastIndex256k'));
+      _keyBox!.put('lastCredentialIndexEd', _keyBox!.get('lastIndexEd25519'));
+      _keyBox!.put('lastCredentialIndexX', _keyBox!.get('lastIndexX25519'));
     } catch (e) {
       if (e is HiveError && e.message.contains('corrupted')) {
         throw WalletException('Cant open boxes. Maybe wrong password?');
@@ -274,7 +281,7 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
         c = curves.p256;
         a = algorithms.signing.ecdsa.sha256;
         var p = hexToBytes(keyData);
-        privateKey = bytesToInt(p);
+        privateKey = bytesToUnsignedInt(p);
       } else if (keyId.startsWith('did:key:z82')) {
         c = curves.p384;
         a = algorithms.signing.ecdsa.sha384;
@@ -302,7 +309,7 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
 
   @override
   export() {
-    return _keyBox?.toMap();
+    return _keyBox?.toMap().map((k, v) => MapEntry(k as String, v));
   }
 
   @override
@@ -353,14 +360,15 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
               'crv of public key does not match private key. ($crv != P-256)');
         }
         var p = hexToBytes(keyData);
-        privateKey = bytesToInt(p);
+        privateKey = bytesToUnsignedInt(p);
         c = elliptic.getP256();
       } else if (keyId.startsWith('did:key:z82')) {
         if (crv != 'P-384') {
           throw Exception(
               'crv of public key does not match private key. ($crv != P-384)');
         }
-        privateKey = hexToInt(keyData);
+        var p = hexToBytes(keyData);
+        privateKey = bytesToUnsignedInt(p);
         c = elliptic.getP384();
       } else if (keyId.startsWith('did:key:z2J9')) {
         if (crv != 'P-521') {

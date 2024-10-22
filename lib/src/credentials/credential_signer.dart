@@ -8,7 +8,6 @@ import 'package:crypto_keys/crypto_keys.dart';
 import 'package:dart_ssi/did.dart';
 import 'package:dart_ssi/src/credentials/jsonLdContext/json_web_signature_2020_context.dart';
 import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
-import 'package:elliptic/elliptic.dart' as el;
 import 'package:json_ld_processor/json_ld_processor.dart';
 import 'package:web3dart/crypto.dart' as web3_crypto;
 
@@ -859,7 +858,7 @@ class JsonWebSignature2020Signer implements Signer {
     var headerEnc = removePaddingFromBase64(header);
 
     var hashToSign = utf8.encode('$headerEnc.') + payload;
-
+    print('s: $hashToSign');
     // proofOptions.remove('@context');
     var sig = await wallet.sign(did, Uint8List.fromList(hashToSign));
 
@@ -976,19 +975,14 @@ class JsonWebSignature2020Signer implements Signer {
           Uint8List.fromList(hashToSign), Signature(signature));
     } else if (alg.startsWith('ES256')) {
       print('ES256');
-      var d = did.replaceAll('did:key:z', '');
-      var dec = base58BitcoinDecode(d);
-      var pub = el.PublicKey.fromHex(
-          el.getP256(), web3_crypto.bytesToHex(dec.sublist(2)));
-      print('verify1: ${pub.X}');
+
       var pubKey = EcPublicKey(
           xCoordinate: web3_crypto.bytesToUnsignedInt(
               base64Decode(addPaddingToBase64(usedJwk['x']))),
-          yCoordinate: web3_crypto
-              .bytesToInt(base64Decode(addPaddingToBase64(usedJwk['y']))),
+          yCoordinate: web3_crypto.bytesToUnsignedInt(
+              base64Decode(addPaddingToBase64(usedJwk['y']))),
           curve: curves.p256);
       var verifier = pubKey.createVerifier(algorithms.signing.ecdsa.sha256);
-      print('verify: ${pubKey.xCoordinate}');
 
       return verifier.verify(
           Uint8List.fromList(hashToSign), Signature(signature));

@@ -27,8 +27,9 @@ dependencies:
   dart_multihash: ^1.0.1
   iso_mdoc: ^1.3.0
   sd_jwt:
-    git:
-      url: https://github.com/b2cm/sd_jwt
+    path: ../sd-jwt
+#    git:
+#      url: https://github.com/b2cm/sd_jwt
 
 dependency_overrides:
   pinenacl: 0.6.0
@@ -39,7 +40,7 @@ dev_dependencies:
   test_process: ^2.0.3
   hive_generator: ^2.0.0
   build_runner: ^2.3.0
-  lints: ^4.0.0
+  lints: ^5.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

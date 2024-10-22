@@ -189,6 +189,73 @@ class WalletStore {
     }
   }
 
+  Future<Map<String, Map<String, dynamic>>> export() async {
+    Map<String, Map<String, dynamic>> data = {};
+    data['configuration'] =
+        _configBox!.toMap().map((k, v) => MapEntry(k as String, v));
+    data['credentials'] =
+        getAllCredentials().map((k, v) => MapEntry(k as String, v.toJson()));
+    data['connection'] =
+        getAllConnections().map((k, v) => MapEntry(k as String, v.toJson()));
+    data['issuedCredentials'] = getAllIssuedCredentials()
+        .map((k, v) => MapEntry(k as String, v.toJson()));
+    data['history'] = _exchangeHistory!.toMap().map((k, v) => MapEntry(
+        k as String,
+        v.map((e) => (e as ExchangeHistoryEntry).toJson()).toList()));
+    data['communication'] = _didcommConversations!
+        .toMap()
+        .map((k, v) => MapEntry(k as String, v.toJson()));
+
+    for (var entry in _keyStorage!.entries) {
+      try {
+        var export = await entry.value.export();
+        if (export is Map<String, dynamic>) {
+          data['keystore_${entry.key}'] = export;
+        } else {
+          data['keystore_${entry.key}'] = {'data': export};
+        }
+      } catch (e) {
+        print(e);
+        data['keystore_${entry.key}'] = {'warning': 'Not exportable'};
+      }
+    }
+    return data;
+  }
+
+  Future<void> import(Map<String, Map<String, dynamic>> data) async {
+    _configBox!.putAll(data['configuration'] ?? {});
+    _credentialBox!.putAll((data['credentials'] ?? {})
+        .map((k, v) => MapEntry(k, Credential.fromJson(v))));
+    _connection!.putAll((data['connection'] ?? {})
+        .map((k, v) => MapEntry(k, Connection.fromJson(v))));
+    _issuingHistory!.putAll((data['issuedCredentials'] ?? {})
+        .map((k, v) => MapEntry(k, Credential.fromJson(v))));
+    _exchangeHistory!.putAll((data['history'] ?? {}).map((k, v) => MapEntry(
+        k, (v as List).map((e) => ExchangeHistoryEntry.fromJson(e)).toList())));
+    _didcommConversations!.putAll((data['communication'] ?? {})
+        .map((k, v) => MapEntry(k, DidcommConversation.fromJson(v))));
+
+    var keystores = data.keys.where((e) => e.startsWith('keystore_'));
+    for (var k in keystores) {
+      var values = data[k];
+      if (!values!.containsKey('warning')) {
+        var kType = k.replaceAll('keystore_', '');
+        var newKeyStoreInstance = _keyStorage?[kType];
+        if (newKeyStoreInstance != null) {
+          try {
+            if (values.containsKey('data')) {
+              await newKeyStoreInstance.import(values['data']);
+            } else {
+              await newKeyStoreInstance.import(values);
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+      }
+    }
+  }
+
   /// Initializes new hierarchical deterministic wallet or restores one from given mnemonic.
   ///
   /// Returns the used mnemonic.

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:crypto_keys/crypto_keys.dart';
+import 'package:dart_ssi/did.dart';
 import 'package:dart_ssi/src/wallet/wallet_store.dart';
 import 'package:json_schema/json_schema.dart';
 
@@ -85,7 +86,9 @@ class DidcommEncryptedMessage extends DidcommMessage {
   Future<DidcommMessage> decrypt(
       {WalletStore? wallet,
       Map<String, dynamic>? privateKeyJwk,
-      Map<String, dynamic>? senderPublicKeyJwk}) async {
+      Map<String, dynamic>? senderPublicKeyJwk,
+      Future<DidDocument> Function(String) didResolver =
+          resolveDidDocument}) async {
     _decodeProtected();
 
     String? keyId;
@@ -103,7 +106,26 @@ class DidcommEncryptedMessage extends DidcommMessage {
     } else if (protectedHeaderAlg!.startsWith('ECDH-1PU')) {
       authcrypt = true;
       if (senderPublicKeyJwk == null) {
-        throw Exception('Public key of sender needed');
+        if (protectedHeaderSkid == null) {
+          throw Exception('sender id needed when using AuthCrypt');
+        }
+
+        var senderDDO =
+            (await didResolver(protectedHeaderSkid!.split('#').first))
+                .resolveKeyIds()
+                .convertAllKeysToJwk();
+        for (var key in senderDDO.keyAgreement!) {
+          if (key is VerificationMethod) {
+            if (key.publicKeyJwk!['kid'] == protectedHeaderSkid ||
+                key.id == protectedHeaderSkid) {
+              senderPublicKeyJwk = key.publicKeyJwk!;
+              break;
+            }
+          }
+        }
+        if (senderPublicKeyJwk == null) {
+          throw Exception('Public key of sender needed');
+        }
       }
       //var senderDid = base64Decode(addPaddingToBase64(apu));
 

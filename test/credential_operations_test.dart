@@ -1336,7 +1336,7 @@ void main() async {
       var signedMap = jsonDecode(signed) as Map<String, dynamic>;
       signedMap['credentialSubject']['id'] = '0x567';
       expect(signedMap.containsKey('proof'), true);
-      expect(signedMap['proof']['type'], 'JsonWebSignature2020');
+      expect(signedMap['proof']['type'], 'Ed25519Signature2020');
       expect(signedMap['proof']['proofPurpose'], 'assertionMethod');
       expect(signedMap['proof'].containsKey('created'), true);
 
@@ -1350,7 +1350,7 @@ void main() async {
       var signed = await signCredential(wallet, w3c);
       var signedMap = jsonDecode(signed) as Map<String, dynamic>;
       expect(signedMap.containsKey('proof'), true);
-      expect(signedMap['proof']['type'], 'JsonWebSignature2020');
+      expect(signedMap['proof']['type'], 'Ed25519Signature2020');
       expect(signedMap['proof']['proofPurpose'], 'assertionMethod');
       expect(signedMap['proof'].containsKey('created'), true);
 
