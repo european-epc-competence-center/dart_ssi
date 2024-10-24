@@ -39,7 +39,7 @@ abstract class KeyStoreBackend {
 
   /// Returns metadata about the key identified by [keyId].
   ///
-  /// Should be formatted like jwk, and use json-keys like crv, kty, use
+  /// Should be formatted like jwk, including the public key (x and y parameter, depending on keyType)
   FutureOr<Map<String, dynamic>> getKeyInformation(String keyId);
 
   /// Deletes the key identified by [keyId]
@@ -401,44 +401,9 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
 
   @override
   FutureOr<Map<String, dynamic>> getKeyInformation(String keyId) {
-    if (keyId.startsWith('did:key:zQ3s')) {
-      return {
-        'kty': 'EC',
-        'crv': 'secp256k1',
-        'kid': '$keyId#${keyId.replaceAll('did:key:', '')}'
-      };
-    } else if (keyId.startsWith('did:key:zDn')) {
-      return {
-        'kty': 'EC',
-        'crv': 'P-256',
-        'kid': '$keyId#${keyId.replaceAll('did:key:', '')}'
-      };
-    } else if (keyId.startsWith('did:key:z82')) {
-      return {
-        'kty': 'EC',
-        'crv': 'P-384',
-        'kid': '$keyId#${keyId.replaceAll('did:key:', '')}'
-      };
-    } else if (keyId.startsWith('did:key:z2J9')) {
-      return {
-        'kty': 'EC',
-        'crv': 'P-521',
-        'kid': '$keyId#${keyId.replaceAll('did:key:', '')}'
-      };
-    } else if (keyId.startsWith('did:key:z6Mk')) {
-      return {
-        'kty': 'OKP',
-        'crv': 'Ed25519',
-        'kid': '$keyId#${keyId.replaceAll('did:key:', '')}'
-      };
-    } else if (keyId.startsWith('did:key:z6LS')) {
-      return {
-        'kty': 'OKP',
-        'crv': 'X25519',
-        'kid': '$keyId#${keyId.replaceAll('did:key:', '')}'
-      };
-    } else {
-      throw Exception('Unsupported curve');
-    }
+    var multibase = keyId.replaceAll('did:key:', '');
+    var jwk = multibaseKeyToJwk(multibase);
+    jwk['kid'] = '$keyId#$multibase';
+    return jwk;
   }
 }
