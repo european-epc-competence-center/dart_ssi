@@ -33,6 +33,10 @@ abstract class KeyStoreBackend {
   /// signs the given [data] with the key identified by [keyId]
   FutureOr<Uint8List> signData(Uint8List data, String keyId);
 
+  /// verifies the [signature] over [signedData] using the public key for the key identified by [keyId]
+  FutureOr<bool> verify(
+      Uint8List signature, Uint8List signedData, String keyId);
+
   /// Calculates a shared secret between the key identified by [keyId] and the [otherPublicKey] given as JWK.
   FutureOr<Uint8List> calculateKeyAgreement(
       String keyId, Map<String, dynamic> otherPublicKey);
@@ -405,5 +409,12 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
     var jwk = multibaseKeyToJwk(multibase);
     jwk['kid'] = '$keyId#$multibase';
     return jwk;
+  }
+
+  @override
+  FutureOr<bool> verify(
+      Uint8List signature, Uint8List signedData, String keyId) {
+    // TODO: implement verify
+    throw UnimplementedError();
   }
 }

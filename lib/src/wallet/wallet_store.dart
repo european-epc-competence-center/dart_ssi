@@ -399,6 +399,16 @@ class WalletStore {
     throw WalletException('No keyStore backend found to sign data');
   }
 
+  FutureOr<bool> verify(
+      String keyId, Uint8List data, Uint8List signature) async {
+    for (var entry in _keyStorage!.entries) {
+      if (await entry.value.hasKey(keyId)) {
+        return entry.value.verify(signature, data, keyId);
+      }
+    }
+    throw WalletException('No keyStore backend found to sign data');
+  }
+
   FutureOr<Uint8List> calculateKeyAgreement(
       String keyId, Map<String, dynamic> otherPublicKey) async {
     for (var entry in _keyStorage!.entries) {

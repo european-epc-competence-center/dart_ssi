@@ -1778,29 +1778,6 @@ bool _checkHashes(Map<String, dynamic> w3c, Map<String, dynamic> plainHash) {
   return true;
 }
 
-class Disclosure {
-  String salt;
-  String propertyName;
-  String base64;
-  dynamic value;
-
-  Disclosure(
-      {required this.salt,
-      required this.value,
-      required this.base64,
-      required this.propertyName});
-
-  factory Disclosure.fromBase64(String disclosure) {
-    List dis = jsonDecode(utf8.decode(base64Decode(disclosure)));
-
-    return Disclosure(
-        salt: dis.first,
-        value: dis.last,
-        base64: disclosure,
-        propertyName: dis[1]);
-  }
-}
-
 String buildProofOptions(
     {required SignatureType type,
     required String verificationMethod,
