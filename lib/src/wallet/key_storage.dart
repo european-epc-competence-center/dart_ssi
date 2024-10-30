@@ -413,8 +413,39 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
 
   @override
   FutureOr<bool> verify(
-      Uint8List signature, Uint8List signedData, String keyId) {
-    // TODO: implement verify
-    throw UnimplementedError();
+      Uint8List signature, Uint8List signedData, String keyId) async {
+    var pubKey = await getKeyInformation(keyId);
+    if (keyId.startsWith('did:key:z6Mk')) {
+      var decodedKey = base64Decode(addPaddingToBase64(pubKey['x']));
+      return ed.verify(
+          ed.PublicKey(decodedKey), Uint8List.fromList(signedData), signature);
+    } else {
+      Identifier alg, curve;
+      if (keyId.startsWith('did:key:zQ3s')) {
+        alg = algorithms.signing.ecdsa.sha256;
+        curve = curves.p256k;
+      } else if (keyId.startsWith('did:key:zDn')) {
+        alg = algorithms.signing.ecdsa.sha256;
+        curve = curves.p256;
+      } else if (keyId.startsWith('did:key:z82')) {
+        alg = algorithms.signing.ecdsa.sha384;
+        curve = curves.p384;
+      } else if (keyId.startsWith('did:key:z2J9')) {
+        alg = algorithms.signing.ecdsa.sha512;
+        curve = curves.p521;
+      } else {
+        throw Exception('');
+      }
+      var castedKey = EcPublicKey(
+          xCoordinate:
+              bytesToUnsignedInt(base64Decode(addPaddingToBase64(pubKey['x']))),
+          yCoordinate:
+              bytesToUnsignedInt(base64Decode(addPaddingToBase64(pubKey['y']))),
+          curve: curve);
+      var verifier = castedKey.createVerifier(alg);
+
+      return verifier.verify(
+          Uint8List.fromList(signedData), Signature(signature));
+    }
   }
 }

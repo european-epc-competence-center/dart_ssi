@@ -16,6 +16,20 @@ import '../wallet/wallet_store.dart';
 import 'credential_operations.dart';
 import 'jsonLdContext/ed25519_signature.dart';
 
+abstract class CredentialSigner {
+  /// JWA alg value
+  final String algValue;
+
+  /// for JWKs this will be the kid
+  final String verificationMethod;
+
+  CredentialSigner(this.algValue, this.verificationMethod);
+
+  FutureOr<Uint8List> sign(Uint8List data);
+
+  FutureOr<bool> verify(Uint8List data, Uint8List signature);
+}
+
 abstract class Signer {
   final String algValue = '';
   final String crvValue = '';
@@ -858,7 +872,6 @@ class JsonWebSignature2020Signer implements Signer {
     var headerEnc = removePaddingFromBase64(header);
 
     var hashToSign = utf8.encode('$headerEnc.') + payload;
-    print('s: $hashToSign');
     // proofOptions.remove('@context');
     var sig = await wallet.sign(did, Uint8List.fromList(hashToSign));
 

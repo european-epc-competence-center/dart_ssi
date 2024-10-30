@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:base_codecs/base_codecs.dart';
+import 'package:crypto/crypto.dart';
+import 'package:dart_ssi/src/credentials/jsonLdContext/json_web_signature_2020_context.dart';
+import 'package:json_ld_processor/json_ld_processor.dart';
+
+import '../../credentials.dart';
 import '../util/types.dart';
 import '../util/utils.dart';
-import 'credential_manifest.dart';
-import 'jsonLdContext/credentials_v1.dart';
-import 'presentation_exchange.dart';
-import 'revocation_list_2020.dart';
 
 class VerifiableCredential implements JsonObject {
   late List<dynamic> context;
@@ -162,6 +166,154 @@ class VerifiableCredential implements JsonObject {
       return false;
     }
   }
+
+  Map<String, dynamic> _serializeWithoutProof() {
+    Map<String, dynamic> jsonObject = {};
+    jsonObject['@context'] = context;
+    if (id != null) jsonObject['id'] = id;
+    jsonObject['type'] = type;
+    jsonObject['credentialSubject'] = credentialSubject;
+    jsonObject['issuer'] = issuer;
+    jsonObject['issuanceDate'] = issuanceDate.toUtc().toIso8601String();
+    if (expirationDate != null) {
+      jsonObject['expirationDate'] = expirationDate!.toUtc().toIso8601String();
+    }
+    if (status != null) jsonObject['credentialStatus'] = status!.toJson();
+    if (credentialSchema != null) {
+      jsonObject['credentialSchema'] = credentialSchema!.toJson();
+    }
+
+    return jsonObject;
+  }
+
+  Future<List<int>> _generateSigningInput(LinkedDataProof proofOptions,
+      Function(Uri url, LoadDocumentOptions? options) loadDocument) async {
+    var normalizedData = await JsonLdProcessor.normalize(
+        _serializeWithoutProof(),
+        options: JsonLdOptions(documentLoader: loadDocument, safeMode: true));
+    var hashedData = sha256.convert(utf8.encode(normalizedData)).bytes;
+
+    var hashedProofOptions = sha256
+        .convert(utf8.encode(await JsonLdProcessor.normalize(
+            proofOptions.toJson(),
+            options:
+                JsonLdOptions(documentLoader: loadDocument, safeMode: true))))
+        .bytes;
+
+    return hashedProofOptions + hashedData;
+  }
+
+  FutureOr<void> buildProof(CredentialSigner signer, LdpProofType proofType,
+      {String? challenge,
+      String proofPurpose = 'assertionMethod',
+      Function(Uri url, LoadDocumentOptions? options) loadDocument =
+          loadDocumentStrict}) async {
+    if (proofType == LdpProofType.ed25519Signature2020 &&
+        !(context.contains(ed25519ContextIri))) {
+      context.add(ed25519ContextIri);
+    }
+    if (proofType == LdpProofType.jsonWebSignature2020 &&
+        !(context.contains(jsonWebSignature2020ContextIri))) {
+      context.add(jsonWebSignature2020ContextIri);
+    }
+
+    var proofOptions = LinkedDataProof(
+        type: proofType.value,
+        proofPurpose: proofPurpose,
+        verificationMethod: signer.verificationMethod,
+        created: DateTime.now(),
+        challenge: challenge,
+        context: proofType == LdpProofType.ed25519Signature2020
+            ? [ed25519ContextIri]
+            : [jsonWebSignature2020ContextIri]);
+
+    var signingInput = await _generateSigningInput(proofOptions, loadDocument);
+    if (proofType == LdpProofType.jsonWebSignature2020) {
+      var critical = <String, dynamic>{};
+      critical['b64'] = false;
+      var header = buildJwsHeader(alg: signer.algValue, extra: critical);
+      var headerEnc = removePaddingFromBase64(header);
+
+      signingInput = utf8.encode('$headerEnc.') + signingInput;
+    }
+
+    var signature = await signer.sign(Uint8List.fromList(signingInput));
+
+    proofOptions.context = null;
+    if (proofType == LdpProofType.ed25519Signature2020) {
+      proofOptions.proofValue = 'z${base58BitcoinEncode(signature)}';
+    } else {
+      var critical = <String, dynamic>{};
+      critical['b64'] = false;
+      var header = buildJwsHeader(alg: signer.algValue, extra: critical);
+      var headerEnc = removePaddingFromBase64(header);
+      proofOptions.jws = '$headerEnc.'
+          '.${base64UrlEncode(signature)}';
+    }
+
+    proof = proofOptions;
+  }
+
+  FutureOr<bool> verify(CredentialSigner verifier,
+      {String? expectedChallenge,
+      Function(Uri url, LoadDocumentOptions? options) loadDocument =
+          loadDocumentStrict}) async {
+    if (proof == null) {
+      throw Exception('No proof to verify');
+    }
+
+    var proofOptions = LinkedDataProof(
+        challenge: proof!.challenge,
+        domain: proof!.domain,
+        type: proof!.type,
+        proofPurpose: proof!.proofPurpose,
+        verificationMethod: proof!.verificationMethod,
+        created: proof!.created,
+        context: proof!.context != null && proof!.context!.isNotEmpty
+            ? proof!.context
+            : (proof!.type == LdpProofType.ed25519Signature2020.value
+                ? [ed25519ContextIri]
+                : [jsonWebSignature2020ContextIri]));
+
+    var signingInput = await _generateSigningInput(proofOptions, loadDocument);
+    Uint8List signature;
+
+    if (proofOptions.type == LdpProofType.jsonWebSignature2020.value) {
+      if (proof!.jws == null) {
+        throw Exception('Proof value missing');
+      }
+      var header = proof!.jws!.split('.').first;
+      var decodedHeader =
+          jsonDecode(utf8.decode(base64Decode(addPaddingToBase64(header))));
+      var alg = decodedHeader['alg'];
+      if (alg == null || alg is! String) {
+        throw Exception('alg Header missing in jws-header');
+      }
+
+      signingInput = ascii.encode('$header.') + signingInput;
+      signature = Uint8List.fromList(
+          base64Decode(addPaddingToBase64(proof!.jws!.split('.').last)));
+    } else {
+      if (proof!.proofValue == null) {
+        throw Exception('Proof value missing');
+      }
+
+      signature = base58BitcoinDecode(proof!.proofValue!.substring(1));
+    }
+
+    return verifier.verify(Uint8List.fromList(signingInput), signature);
+  }
+}
+
+enum LdpProofType {
+  ed25519Signature2020,
+  jsonWebSignature2020;
+
+  static const Map<LdpProofType, String> stringValues = {
+    LdpProofType.ed25519Signature2020: 'Ed25519Signature2020',
+    LdpProofType.jsonWebSignature2020: 'JsonWebSignature2020',
+  };
+  String get value => stringValues[this]!;
 }
 
 class LinkedDataProof implements JsonObject {
@@ -169,6 +321,7 @@ class LinkedDataProof implements JsonObject {
   late String proofPurpose;
   late String verificationMethod;
   late DateTime created;
+  List<String>? context;
   String? proofValue;
   String? challenge;
   String? jws;
@@ -183,7 +336,8 @@ class LinkedDataProof implements JsonObject {
       this.proofValue,
       this.challenge,
       this.jws,
-      this.domain});
+      this.domain,
+      this.context});
 
   LinkedDataProof.fromJson(dynamic jsonObject) {
     var proof = credentialToMap(jsonObject);
@@ -228,10 +382,14 @@ class LinkedDataProof implements JsonObject {
     if (_originalDoc != null) return Map.from(_originalDoc!);
 
     Map<String, dynamic> jsonObject = {};
+    if (context != null) {
+      jsonObject['@context'] = context!.length == 1 ? context!.first : context;
+    }
     jsonObject['type'] = type;
     jsonObject['proofPurpose'] = proofPurpose;
     jsonObject['verificationMethod'] = verificationMethod;
     jsonObject['created'] = created.toIso8601String();
+
     if (domain != null) jsonObject['domain'] = domain;
     if (challenge != null) jsonObject['challenge'] = challenge;
     if (proofValue != null) jsonObject['proofValue'] = proofValue;

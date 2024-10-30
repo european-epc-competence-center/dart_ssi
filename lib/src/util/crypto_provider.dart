@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:dart_ssi/credentials.dart';
 import 'package:iso_mdoc/iso_mdoc.dart';
 import 'package:sd_jwt/sd_jwt.dart';
 
@@ -64,5 +65,23 @@ class WalletSignatureGeneratorForMdoc extends SignatureGenerator {
   FutureOr<bool> verify(List<int> data, List<int> toVerify) {
     return wallet.verify(
         keyId, Uint8List.fromList(data), Uint8List.fromList(toVerify));
+  }
+}
+
+class WalletCredentialSigner extends CredentialSigner {
+  WalletStore wallet;
+  String keyId;
+
+  WalletCredentialSigner(
+      this.wallet, this.keyId, super.algValue, super.verificationMethod);
+
+  @override
+  FutureOr<Uint8List> sign(Uint8List data) {
+    return wallet.sign(keyId, data);
+  }
+
+  @override
+  FutureOr<bool> verify(Uint8List data, Uint8List signature) {
+    return wallet.verify(keyId, data, signature);
   }
 }
