@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto_keys/crypto_keys.dart';
 import 'package:dart_ssi/did.dart';
+import 'package:dart_ssi/src/util/crypto_provider.dart';
 import 'package:dart_ssi/src/wallet/wallet_store.dart';
 import 'package:json_schema/json_schema.dart';
 
@@ -91,17 +92,25 @@ class DidcommEncryptedMessage extends DidcommMessage {
           resolveDidDocument}) async {
     _decodeProtected();
 
+    KeyAgreementGenerator? keyAgreement;
     String? keyId;
     if (wallet != null) {
       keyId = await _searchPrivateKey(wallet);
+      keyAgreement = WalletKeyAgreementGenerator(wallet, keyId);
+    }
+    if (privateKeyJwk != null) {
+      keyAgreement = JwkKeyAgreementGenerator(privateKeyJwk);
+    }
+    if (keyAgreement == null) {
+      throw Exception('No private key given');
     }
 
     //2) compute shared Secret
     List<int> sharedSecret;
     bool authcrypt = false;
     if (protectedHeaderAlg!.startsWith('ECDH-ES')) {
-      sharedSecret = await ecdhES(wallet, keyId, privateKeyJwk,
-          protectedHeaderEpk!, protectedHeaderAlg!, protectedHeaderEnc!,
+      sharedSecret = await ecdhES(keyAgreement, protectedHeaderEpk!,
+          protectedHeaderAlg!, protectedHeaderEnc!,
           apv: protectedHeaderApv);
     } else if (protectedHeaderAlg!.startsWith('ECDH-1PU')) {
       authcrypt = true;
@@ -130,11 +139,8 @@ class DidcommEncryptedMessage extends DidcommMessage {
       //var senderDid = base64Decode(addPaddingToBase64(apu));
 
       sharedSecret = await ecdh1PU(
-          wallet,
-          keyId,
-          keyId,
-          privateKeyJwk,
-          privateKeyJwk,
+          keyAgreement,
+          keyAgreement,
           protectedHeaderEpk!,
           senderPublicKeyJwk,
           base64Decode(addPaddingToBase64(tag)),

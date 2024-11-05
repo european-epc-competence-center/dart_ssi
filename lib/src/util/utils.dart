@@ -6,13 +6,12 @@ import 'package:base_codecs/base_codecs.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dart_multihash/dart_multihash.dart';
 import 'package:dart_ssi/did.dart';
+import 'package:dart_ssi/src/util/crypto_provider.dart';
 import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
-import 'package:elliptic/ecdh.dart' as ecdh;
 import 'package:elliptic/elliptic.dart' as elliptic;
 import 'package:elliptic/elliptic.dart';
 import 'package:http/http.dart' as http;
 import 'package:web3dart/crypto.dart';
-import 'package:x25519/x25519.dart' as x25519;
 
 import '../credentials/credential_operations.dart';
 import '../wallet/wallet_store.dart';
@@ -360,67 +359,15 @@ String getDateTimeNowString() {
   return xmlDate;
 }
 
-Future<List<int>> calculateZ(WalletStore? wallet, String? keyId,
-    Map<String, dynamic> publicKey, Map<String, dynamic>? privateKey) async {
-  if (wallet != null && keyId != null) {
-    return wallet.calculateKeyAgreement(keyId, publicKey);
-  } else if (privateKey != null) {
-    List<int> z;
-    // keys given as jwks
-    var crv = privateKey['crv'];
-    if (crv != publicKey['crv']) {
-      throw Exception('curves do not match ($crv != ${publicKey['crv']}');
-    }
-    elliptic.Curve? c;
-
-    if (crv.startsWith('P') || crv.startsWith('secp256k1')) {
-      if (crv == 'P-256') {
-        c = elliptic.getP256();
-      } else if (crv == 'P-384') {
-        c = elliptic.getP384();
-      } else if (crv == 'P-521') {
-        c = elliptic.getP521();
-      } else if (crv == 'secp256k1') {
-        c = elliptic.getSecp256k1();
-      } else {
-        throw UnimplementedError("Curve `$crv` not supported");
-      }
-
-      var castedPrivate = elliptic.PrivateKey(
-          c,
-          bytesToUnsignedInt(
-              base64Decode(addPaddingToBase64(privateKey['d']))));
-      var castedPublic = elliptic.PublicKey.fromPoint(
-          c,
-          elliptic.AffinePoint.fromXY(
-              bytesToUnsignedInt(
-                  base64Decode(addPaddingToBase64(publicKey['x']))),
-              bytesToUnsignedInt(
-                  base64Decode(addPaddingToBase64(publicKey['y'])))));
-      z = ecdh.computeSecret(castedPrivate, castedPublic);
-    } else if (crv.startsWith('X')) {
-      var castedPrivate = base64Decode(addPaddingToBase64(privateKey['d']));
-      var castedPublic = base64Decode(addPaddingToBase64(publicKey['x']));
-      z = x25519.X25519(castedPrivate, castedPublic);
-    } else {
-      throw UnimplementedError("Curve `$crv` not supported");
-    }
-    return z;
-  } else {
-    throw Exception('No private key');
-  }
+Future<List<int>> _calculateZ(KeyAgreementGenerator keyAgreement,
+    Map<String, dynamic> otherPublicKey) async {
+  return keyAgreement.generateAgreement(otherPublicKey);
 }
 
-Future<List<int>> ecdhES(
-    WalletStore? wallet,
-    String? keyId,
-    Map<String, dynamic>? privateKey,
-    Map<String, dynamic> publicKey,
-    String alg,
-    String enc,
-    {String? apu,
-    String? apv}) async {
-  List<int> z = await calculateZ(wallet, keyId, publicKey, privateKey);
+Future<List<int>> ecdhES(KeyAgreementGenerator keyAgreement,
+    Map<String, dynamic> publicKey, String alg, String enc,
+    {String? apu, String? apv}) async {
+  List<int> z = await _calculateZ(keyAgreement, publicKey);
 
   print(z);
 
@@ -487,31 +434,16 @@ Future<List<int>> ecdhES(
 }
 
 Future<List<int>> ecdh1PU(
-    WalletStore? wallet,
-    String? keyIdPrivate1,
-    String? keyIdPrivate2,
-    Map<String, dynamic>? private1,
-    Map<String, dynamic>? private2,
+    KeyAgreementGenerator keyAgreement1,
+    KeyAgreementGenerator keyAgreement2,
     Map<String, dynamic> public1,
     Map<String, dynamic> public2,
     List<int> tag,
     String keyWrapAlgorithm,
     String apu,
     String apv) async {
-  print('---');
-  print(keyIdPrivate1);
-  print(keyIdPrivate2);
-  print(private1);
-  print(private2);
-  print(public1);
-  print(public2);
-  print(tag);
-  print(keyWrapAlgorithm);
-  print(apu);
-  print(apv);
-  print('_____');
-  var ze = await calculateZ(wallet, keyIdPrivate1, public1, private1);
-  var zs = await calculateZ(wallet, keyIdPrivate2, public2, private2);
+  var ze = await _calculateZ(keyAgreement1, public1);
+  var zs = await _calculateZ(keyAgreement2, public2);
 
   var z = ze + zs;
 

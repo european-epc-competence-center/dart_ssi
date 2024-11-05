@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:crypto_keys/crypto_keys.dart';
 import 'package:dart_ssi/didcomm.dart';
+import 'package:dart_ssi/src/util/crypto_provider.dart';
 import 'package:dart_ssi/src/util/types.dart';
 import 'package:dart_ssi/src/wallet/wallet_store.dart';
 import 'package:elliptic/elliptic.dart' as elliptic;
@@ -61,16 +62,19 @@ class DidcommMessage implements JsonObject {
     jweHeader['alg'] = keyWrapAlgorithm.value;
 
     String curve, keyType;
+    String? kid;
     if (wallet != null && keyId != null) {
       var keyInfo = await wallet.getKeyInformation(keyId);
       if (keyWrapAlgorithm == KeyWrapAlgorithm.ecdh1PU) {
         jweHeader['apu'] = removePaddingFromBase64(
             base64UrlEncode(utf8.encode(keyInfo['kid'])));
       }
+      kid = keyInfo['kid'];
       jweHeader['skid'] = keyInfo['kid'];
       curve = keyInfo['crv']!;
       keyType = keyInfo['kty']!;
     } else if (senderPrivateKeyJwk != null) {
+      kid = senderPrivateKeyJwk['kid'];
       jweHeader['skid'] = senderPrivateKeyJwk['kid'];
       curve = senderPrivateKeyJwk['crv']!;
       keyType = senderPrivateKeyJwk['kty']!;
@@ -185,6 +189,13 @@ class DidcommMessage implements JsonObject {
         additionalAuthenticatedData: aad);
 
     // 7) Encrypt cek for all recipients
+    KeyAgreementGenerator? senderKeyAgreement;
+    if (wallet != null && keyId != null) {
+      senderKeyAgreement = WalletKeyAgreementGenerator(wallet, keyId);
+    }
+    if (senderPrivateKeyJwk != null) {
+      senderKeyAgreement = JwkKeyAgreementGenerator(senderPrivateKeyJwk);
+    }
     List<Map<String, dynamic>> recipients = [];
     for (var key in recipientPublicKeyJwk) {
       if (key['crv'] == curve) {
@@ -193,9 +204,8 @@ class DidcommMessage implements JsonObject {
         var encryptedCek = await _encryptSymmetricKey(
             cek, keyWrapAlgorithm.value, curve, key, epkPrivateJwk, apv,
             c: c,
-            senderPrivateKeyJwk: senderPrivateKeyJwk,
-            wallet: wallet,
-            keyId: keyId,
+            senderKeyAgreement: senderKeyAgreement,
+            kid: kid,
             tag: encrypted.authenticationTag);
         r['encrypted_key'] =
             removePaddingFromBase64(base64UrlEncode(encryptedCek.data));
@@ -221,33 +231,25 @@ class DidcommMessage implements JsonObject {
       Map<String, dynamic> publicKeyJwk,
       dynamic epkPrivate,
       String apv,
-      {Map<String, dynamic>? senderPrivateKeyJwk,
-      WalletStore? wallet,
-      String? keyId,
+      {KeyAgreementGenerator? senderKeyAgreement,
+      String? kid,
       List<int>? tag,
       elliptic.Curve? c}) async {
     //7) do ecdh to get shared Secret
     List<int> sharedSecret;
+    var keyAgreement = JwkKeyAgreementGenerator(epkPrivate);
     if (keyWrapAlgorithm.startsWith('ECDH-ES')) {
       sharedSecret = await ecdhES(
-          null, null, epkPrivate, publicKeyJwk, 'ECDH-ES', 'ECDH-ES+A256KW',
+          keyAgreement, publicKeyJwk, 'ECDH-ES', 'ECDH-ES+A256KW',
           apv: apv);
     } else if (keyWrapAlgorithm.startsWith('ECDH-1PU')) {
-      String kid;
-      if (wallet != null && keyId != null) {
-        var info = await wallet.getKeyInformation(keyId);
-        kid = info['kid'];
-      } else if (senderPrivateKeyJwk != null) {
-        kid = senderPrivateKeyJwk['kid'];
-      } else {
-        throw Exception('no key');
+      if (kid == null) throw Exception('no Kid');
+      if (senderKeyAgreement == null) {
+        throw Exception('No sender agreement');
       }
       sharedSecret = await ecdh1PU(
-          wallet,
-          null,
-          keyId,
-          epkPrivate,
-          senderPrivateKeyJwk,
+          keyAgreement,
+          senderKeyAgreement,
           publicKeyJwk,
           publicKeyJwk,
           tag!,
