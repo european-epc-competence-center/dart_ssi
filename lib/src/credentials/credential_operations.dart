@@ -1559,8 +1559,8 @@ FilterResult _processInputDescriptor(
         List<Map<String, dynamic>> input = [];
         for (int i = 0; i < sdJwtCredentials.length; i++) {
           var sdJws = sdJwtCredentials[i];
-          var sd = sdJws.unverified();
-          var c = sd.claims;
+          var sd = sdJws.toSdJwt();
+          var c = sd.additionalClaims ?? {};
           c['_id'] = i;
           input.add(c);
         }

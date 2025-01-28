@@ -35,7 +35,7 @@ class WalletCryptoProviderForSdJwt extends CryptoProvider {
   }
 
   @override
-  bool verify(
+  FutureOr<bool> verify(
       {required Uint8List data,
       required SigningAlgorithm algorithm,
       required Signature signature}) {
@@ -45,8 +45,6 @@ class WalletCryptoProviderForSdJwt extends CryptoProvider {
     } else {
       throw Exception('Unknown Signature');
     }
-
-    //TODO: Verify in sd_jwt must be asynchronous
     return wallet.verify(keyId, data, sig) as bool;
   }
 

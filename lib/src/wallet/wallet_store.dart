@@ -458,12 +458,13 @@ class WalletStore {
   /// Generates a new key in the selected [storageBackend] and returns its keyId.
   Future<String> generateNewKey(
       {KeyType keyType = KeyType.ed25519,
-      String storageBackend = 'software'}) async {
+      String storageBackend = 'software',
+      Map<String, dynamic>? additionalProperties}) async {
     var s = _keyStorage?[storageBackend];
     if (s == null) {
       throw WalletException('No keyStore configured');
     }
-    var keyId = await s.generateKey(keyType);
+    var keyId = await s.generateKey(keyType, additionalProperties);
     return keyId;
   }
 

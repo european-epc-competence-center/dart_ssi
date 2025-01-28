@@ -25,7 +25,8 @@ abstract class KeyStoreBackend {
   FutureOr<void> initializeStorage();
 
   /// generates a new key and returns it's key-id
-  FutureOr<String> generateKey(KeyType keyType);
+  FutureOr<String> generateKey(KeyType keyType,
+      [Map<String, dynamic>? additionalProperties]);
 
   /// returns whether the backend controls the key or not
   FutureOr<bool> hasKey(String keyId);
@@ -131,7 +132,8 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
   }
 
   @override
-  FutureOr<String> generateKey(KeyType keyType) {
+  FutureOr<String> generateKey(KeyType keyType,
+      [Map<String, dynamic>? additionalProperties]) {
     if (keyType == KeyType.secp256k1) {
       return _getNextDidP256k();
     } else if (keyType == KeyType.ed25519) {
@@ -320,6 +322,9 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
   Future<void> import(data) async {
     if (data is Map) {
       await _keyBox!.putAll(data);
+      var seed = _keyBox!.get('seed');
+      var seedAsUint8List = Uint8List.fromList((seed as List).cast<int>());
+      await _keyBox!.put('seed', seedAsUint8List);
     } else {
       throw Exception('cant store this data');
     }

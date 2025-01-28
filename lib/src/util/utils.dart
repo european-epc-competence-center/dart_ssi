@@ -239,9 +239,9 @@ Future<String> buildCsrForDid(WalletStore wallet, String did,
     String? organization,
     String? organizationalUnit,
     String? emailAddress}) async {
-  if (!did.startsWith('did:key:z6Mk')) {
-    throw Exception('Only did:key with Ed25519 keys are supported now');
-  }
+  // if (!did.startsWith('did:key:z6Mk')) {
+  //   throw Exception('Only did:key with Ed25519 keys are supported now');
+  // }
 
   var ddo = await resolveDidDocument(did);
   var parsedDdo = ddo.resolveKeyIds().convertAllKeysToJwk();
@@ -250,8 +250,6 @@ Future<String> buildCsrForDid(WalletStore wallet, String did,
   if (jwk == null) {
     throw Exception('No public key found');
   }
-
-  var pub = ed.PublicKey(base64Decode(addPaddingToBase64(jwk['x'])));
 
   var csr = ASN1Sequence();
   var cri = ASN1Sequence();
@@ -302,23 +300,87 @@ Future<String> buildCsrForDid(WalletStore wallet, String did,
     subject.add(countrySet);
   }
 
-  //subject public Key
-  var publicKey = ASN1Sequence();
-  var pubKeyId = ASN1Sequence();
-  pubKeyId.add(ASN1ObjectIdentifier([1, 3, 101, 112]));
-  publicKey.add(pubKeyId);
-  publicKey.add(ASN1BitString(pub.bytes));
-  var sigId = ASN1Sequence()..add(ASN1ObjectIdentifier([1, 3, 101, 112]));
-
-  //build together Certificate Request Info
   cri.add(subject);
-  cri.add(publicKey);
 
-  //sign
-  var sig = await wallet.sign(did, Uint8List.fromList(cri.encodedBytes));
-  csr.add(cri);
-  csr.add(sigId);
-  csr.add(ASN1BitString(sig));
+  //subject public Key
+  if (jwk['kty'] == 'OKP') {
+    if (jwk['crv'] != 'Ed25519') {
+      throw Exception('Unsupported Curve: ${jwk['crv']}');
+    }
+
+    var pub = ed.PublicKey(base64Decode(addPaddingToBase64(jwk['x'])));
+
+    var publicKey = ASN1Sequence();
+    var pubKeyId = ASN1Sequence();
+    pubKeyId.add(ASN1ObjectIdentifier([1, 3, 101, 112]));
+    publicKey.add(pubKeyId);
+    publicKey.add(ASN1BitString(pub.bytes));
+    var sigId = ASN1Sequence()..add(ASN1ObjectIdentifier([1, 3, 101, 112]));
+
+    cri.add(publicKey);
+
+    //sign
+    var sig = await wallet.sign(did, Uint8List.fromList(cri.encodedBytes));
+    csr.add(cri);
+    csr.add(sigId);
+    csr.add(ASN1BitString(sig));
+  } else if (jwk['kty'] == 'EC') {
+    var publicKey = ASN1Sequence();
+    var pubKeyId = ASN1Sequence();
+
+    pubKeyId.add(ASN1ObjectIdentifier([1, 2, 840, 10045, 2, 1])); // ecPublicKey
+    var sigId = ASN1Sequence();
+    if (jwk['crv'] == 'P-256') {
+      pubKeyId.add(ASN1ObjectIdentifier([1, 2, 840, 10045, 3, 1, 7]));
+      sigId.add(ASN1ObjectIdentifier([1, 2, 840, 10045, 4, 3, 2]));
+    } else if (jwk['crv'] == 'P-384') {
+      pubKeyId.add(ASN1ObjectIdentifier([1, 3, 132, 0, 34]));
+      sigId.add(ASN1ObjectIdentifier([1, 2, 840, 10045, 4, 3, 3]));
+    } else if (jwk['crv'] == 'P-521') {
+      pubKeyId.add(ASN1ObjectIdentifier([1, 3, 132, 0, 35]));
+      sigId.add(ASN1ObjectIdentifier([1, 2, 840, 10045, 4, 3, 4]));
+    } else if (jwk['crv'] == 'P-256k' || jwk['crv'] == 'secp256k1') {
+      pubKeyId.add(ASN1ObjectIdentifier([1, 3, 132, 0, 10]));
+      sigId.add(ASN1ObjectIdentifier([1, 2, 840, 10045, 4, 3, 2]));
+    } else {
+      throw Exception('Unsupported Curve: ${jwk['crv']}');
+    }
+
+    var x = base64Decode(addPaddingToBase64(jwk['x']));
+    var y = base64Decode(addPaddingToBase64(jwk['y']));
+    print(x.length);
+    print(y.length);
+    if (jwk['crv'] == 'P-521') {
+      if (x.length == 65) {
+        x = Uint8List.fromList([0, ...x]);
+      }
+      if (y.length == 65) {
+        y = Uint8List.fromList([0, ...y]);
+      }
+    }
+    print(x.length);
+    print(y.length);
+
+    var pubKey = ASN1BitString([4, ...x, ...y]);
+
+    publicKey.add(pubKeyId);
+    publicKey.add(pubKey);
+
+    cri.add(publicKey);
+
+    //sign
+    var sig = await wallet.sign(did, Uint8List.fromList(cri.encodedBytes));
+    csr.add(cri);
+    csr.add(sigId);
+    var r = sig.sublist(0, sig.length ~/ 2);
+    var s = sig.sublist(sig.length ~/ 2);
+    var encodedSignature = ASN1Sequence();
+    encodedSignature.add(ASN1Integer(bytesToUnsignedInt(r)));
+    encodedSignature.add(ASN1Integer(bytesToUnsignedInt(s)));
+    csr.add(ASN1BitString(encodedSignature.encodedBytes));
+  } else {
+    throw Exception('Unsupported KeyType: ${jwk['kty']}');
+  }
 
   //buildPem
   var buffer = StringBuffer();
