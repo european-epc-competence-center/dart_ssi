@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:dart_ssi/credentials.dart';
-import 'package:dart_ssi/src/oidc/issuance.dart';
+import 'package:dart_ssi/src/oid/issuance.dart';
 import 'package:iso_mdoc/iso_mdoc.dart';
 import 'package:json_path/json_path.dart';
 import 'package:json_schema/json_schema.dart';
@@ -651,7 +651,7 @@ class FormatProperty implements JsonObject {
     if (ldpVc != null) jsonObject['ldp_vc'] = ldpVc!.toJson();
     if (mdocFormat != null) jsonObject['mso_mdoc'] = mdocFormat!.toJson();
     if (sdJwtVcFormat != null) {
-      jsonObject[OidcCredentialFormat.sdJwt] = sdJwtVcFormat!.toJson();
+      jsonObject[OidCredentialFormat.sdJwt] = sdJwtVcFormat!.toJson();
     }
     return jsonObject;
   }
