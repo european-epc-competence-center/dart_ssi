@@ -779,6 +779,82 @@ class ClaimsDescriptionObject implements JsonObject {
   }
 }
 
+class KeyAttestationDetails implements JsonObject {
+  List<String>? keyStorage;
+  List<String>? userAuthentication;
+
+  KeyAttestationDetails({this.keyStorage, this.userAuthentication});
+
+  factory KeyAttestationDetails.fromJson(dynamic jsonData) {
+    var data = credentialToMap(jsonData);
+    return KeyAttestationDetails(
+        keyStorage: (data['key_storage'] as List?)?.cast<String>(),
+        userAuthentication:
+            (data['user_authentication'] as List?)?.cast<String>());
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    var jsonData = <String, dynamic>{};
+    if (keyStorage != null) {
+      jsonData['key_storage'] = keyStorage;
+    }
+    if (userAuthentication != null) {
+      jsonData['user_authentication'] = userAuthentication;
+    }
+    return jsonData;
+  }
+
+  @override
+  String toString() {
+    return jsonEncode(toJson());
+  }
+}
+
+class ProofTypesSupportedDetails implements JsonObject {
+  List<dynamic> signingAlgValuesSupported;
+  KeyAttestationDetails? keyAttestationRequired;
+
+  ProofTypesSupportedDetails(
+      {required this.signingAlgValuesSupported, this.keyAttestationRequired});
+
+  factory ProofTypesSupportedDetails.fromJson(dynamic jsonData) {
+    var data = credentialToMap(jsonData);
+    List sigValues;
+    if (data.containsKey('proof_signing_alg_values_supported')) {
+      sigValues = data['proof_signing_alg_values_supported'] as List;
+    } else {
+      throw Exception(
+          'proof_signing_alg_values_supported property is mandatory');
+    }
+    KeyAttestationDetails? keyDetails;
+    if (data.containsKey('key_attestations_required')) {
+      keyDetails =
+          KeyAttestationDetails.fromJson(data['key_attestations_required']);
+    }
+
+    return ProofTypesSupportedDetails(
+        signingAlgValuesSupported: sigValues,
+        keyAttestationRequired: keyDetails);
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    var jsonData = <String, dynamic>{
+      'proof_signing_alg_values_supported': signingAlgValuesSupported
+    };
+    if (keyAttestationRequired != null) {
+      jsonData['key_attestations_required'] = keyAttestationRequired!.toJson();
+    }
+    return jsonData;
+  }
+
+  @override
+  String toString() {
+    return jsonEncode(toJson());
+  }
+}
+
 class CredentialsSupportedObject implements JsonObject {
   late String format;
   String? scope;
@@ -789,7 +865,7 @@ class CredentialsSupportedObject implements JsonObject {
   // in draft 12 this is only a list of the proof types,
   // therefor the List of supported algs is always empty
   // alg values migth be strings (jwt/ldp_vp) or ints (cwt)
-  Map<String, List<dynamic>>? proofTypesSupported;
+  Map<String, ProofTypesSupportedDetails>? proofTypesSupported;
   List<OidDisplayObject>? display;
   // credential specific
   Map<String, dynamic>? claims;
@@ -817,7 +893,7 @@ class CredentialsSupportedObject implements JsonObject {
     var format = jsonObject['format'];
     String? scope = jsonObject['scope'];
     List<String>? cbm, cs, o;
-    Map<String, List<dynamic>>? pt;
+    Map<String, ProofTypesSupportedDetails>? pt;
     List<OidDisplayObject>? display;
     if (jsonObject.containsKey('cryptographic_binding_methods_supported')) {
       cbm = (jsonObject['cryptographic_binding_methods_supported'] as List)
@@ -827,16 +903,16 @@ class CredentialsSupportedObject implements JsonObject {
       var tmp = jsonObject['proof_types_supported'];
       pt = {};
       if (tmp is Map) {
-        //draft 13
+        //draft 13 and above
         for (var k in tmp.keys) {
           Map v = tmp[k];
-          var l = (v['proof_signing_alg_values_supported'] as List);
+          var l = ProofTypesSupportedDetails.fromJson(v);
           pt[k] = l;
         }
       } else {
         tmp as List;
         for (var k in tmp) {
-          pt[k] = [];
+          pt[k] = ProofTypesSupportedDetails(signingAlgValuesSupported: []);
         }
       }
     }
@@ -1012,9 +1088,8 @@ class CredentialsSupportedObject implements JsonObject {
           credentialSigningAlgValues;
     }
     if (proofTypesSupported != null) {
-      jsonObject['proof_types_supported'] = proofTypesSupported!.map(
-          (key, value) =>
-              MapEntry(key, {'proof_signing_alg_values_supported': value}));
+      jsonObject['proof_types_supported'] = proofTypesSupported!
+          .map((key, value) => MapEntry(key, value.toJson()));
     }
 
     if (display != null && display!.isNotEmpty) {
