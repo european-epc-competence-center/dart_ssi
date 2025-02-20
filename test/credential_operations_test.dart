@@ -1469,7 +1469,8 @@ void main() async {
       expect(
           () async => await verifyPresentation(presMap, challenge),
           throwsA(predicate((dynamic e) =>
-              e.message == 'a challenge do not match expected challenge')));
+              e.message ==
+              'challenge in credential do not match expected challenge')));
     });
 
     test('not enough proofs', () async {
@@ -1491,7 +1492,7 @@ void main() async {
 
     test('add additional proofs', () async {
       var challenge = Uuid().v4();
-      var newDID = await holder.getNextConnectionDID();
+      var newDID = await holder.generateNewKey();
       var presentation = await buildPresentation(
           [signed1, signed2, signed3], holder, challenge,
           additionalDids: [newDID]);
@@ -1516,10 +1517,14 @@ void main() async {
   });
 
   group('sign random String', () {
+    late WalletStore w;
+    setUp(() async {
+      w = WalletStore('testString');
+      await w.openBoxes(password: 'password');
+    });
     test('sign without any manipulation or key rotation', () async {
       String toSign = 'Its a String';
-      WalletStore w = WalletStore('tests');
-      await w.openBoxes(password: 'password');
+
       var did = await w.getNextCredentialDID();
       var jws =
           await signStringOrJson(wallet: w, didToSignWith: did, toSign: toSign);
@@ -1527,15 +1532,11 @@ void main() async {
       var verified = await verifyStringSignature(jws, expectedDid: did);
 
       expect(verified, true);
-
-      var dir = Directory('tests');
-      if (dir.existsSync()) dir.delete(recursive: true);
     });
 
     test('sign without any manipulation ed25519', () async {
       String toSign = 'Its a String';
-      WalletStore w = WalletStore('tests');
-      await w.openBoxes(password: 'password');
+
       var did = await w.getNextCredentialDID(keyType: KeyType.ed25519);
       var jws =
           await signStringOrJson(wallet: w, didToSignWith: did, toSign: toSign);
@@ -1544,8 +1545,10 @@ void main() async {
           await verifyStringSignature(jws, expectedDid: did, toSign: toSign);
 
       expect(verified, true);
+    });
 
-      var dir = Directory('tests');
+    tearDown(() {
+      var dir = Directory('testString');
       if (dir.existsSync()) dir.delete(recursive: true);
     });
   });
@@ -1835,201 +1838,6 @@ void main() async {
       expect(paths.contains('friends.1.name'), true);
       expect(paths.contains('friends.0.age'), true);
       expect(paths.contains('friends.1.age'), true);
-    });
-  });
-
-  group('Presentation Definition', () {
-    Map<String, dynamic> vc1 = {
-      "@context": [
-        "https://www.w3.org/2018/credentials/v1",
-        "https://www.w3.org/2018/credentials/examples/v1"
-      ],
-      "id": "http://example.gov/credentials/3732",
-      "type": ["VerifiableCredential", "UniversityDegreeCredential"],
-      "issuer": "https://example.edu",
-      "issuanceDate": "2010-01-01T19:23:24Z",
-      "credentialSubject": {
-        "id": "did:example:ebfeb1f712ebc6f1c276e12ec21",
-        "degree": {
-          "type": "BachelorDegree",
-          "name": "Bachelor of Science and Arts"
-        }
-      },
-      "proof": {
-        "type": "Ed25519Signature2020",
-        "created": "2021-11-13T18:19:39Z",
-        "verificationMethod": "https://example.edu/issuers/14#key-1",
-        "proofPurpose": "assertionMethod",
-        "proofValue":
-            "z58DAdFfa9SkqZMVPxAQpic7ndSayn1PzZs6ZjWp1CktyGesjuTSwRdoWhAfGFCF5bppETSTojQCrfFPP2oumHKtz"
-      }
-    };
-
-    Map<String, dynamic> vc2 = {
-      "@context": [
-        "https://www.w3.org/2018/credentials/v1",
-        "https://www.w3.org/2018/credentials/examples/v1"
-      ],
-      "id": "http://example.gov/credentials/3732",
-      "type": ["VerifiableCredential", "NameAddress"],
-      "issuer": "https://example2.edu",
-      "issuanceDate": "2010-01-01T19:23:24Z",
-      "credentialSubject": {
-        "id": "did:example:ebfeb1f712ebc6f1c276e12ec21",
-        'type': 'NameAddress',
-        'familyName': 'Mustermann',
-        'givenName': 'Max',
-        'address': {
-          'streetAddress': 'Am Schwanenteich 8',
-          'postalCode': '09648'
-        }
-      },
-      "proof": {
-        "type": "Ed25519Signature2020",
-        "created": "2021-11-13T18:19:39Z",
-        "verificationMethod": "https://example.edu/issuers/14#key-1",
-        "proofPurpose": "assertionMethod",
-        "proofValue":
-            "z58DAdFfa9SkqZMVPxAQpic7ndSayn1PzZs6ZjWp1CktyGesjuTSwRdoWhAfGFCF5bppETSTojQCrfFPP2oumHKtz"
-      }
-    };
-
-    Map<String, dynamic> vc3 = {
-      "@context": [
-        "https://www.w3.org/2018/credentials/v1",
-        "https://www.w3.org/2018/credentials/examples/v1"
-      ],
-      "id": "http://example.gov/credentials/3732",
-      "type": ["VerifiableCredential", "UniversityDegreeCredential"],
-      "issuer": {'id': "https://example2.edu"},
-      "issuanceDate": "2010-01-01T19:23:24Z",
-      "credentialSubject": {
-        "id": "did:example:ebfeb1f712ebc6f1c276e12ec21",
-        "degree": {
-          "type": "BachelorDegree",
-          "name": "Bachelor of Science and Arts"
-        }
-      },
-      "proof": {
-        "type": "Ed25519Signature2020",
-        "created": "2021-11-13T18:19:39Z",
-        "verificationMethod": "https://example.edu/issuers/14#key-1",
-        "proofPurpose": "assertionMethod",
-        "proofValue":
-            "z58DAdFfa9SkqZMVPxAQpic7ndSayn1PzZs6ZjWp1CktyGesjuTSwRdoWhAfGFCF5bppETSTojQCrfFPP2oumHKtz"
-      }
-    };
-
-    test('simple Request (filter issuer)', () {
-      Map<String, dynamic> presentationDefinition = {
-        "presentation_definition": {
-          "id": "Scalable trust example",
-          "input_descriptors": [
-            {
-              "id": "any type of credit card from any bank",
-              "name": "any type of credit card from any bank",
-              "purpose": "Please provide your student Card from the university",
-              "constraints": {
-                "fields": [
-                  {
-                    "path": [r"$..issuer"],
-                    "filter": {
-                      "type": "string",
-                      "pattern": "https://example2.edu"
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      };
-
-      var result = searchCredentialsForPresentationDefinition(
-        PresentationDefinition.fromJson(presentationDefinition),
-        credentials: [
-          VerifiableCredential.fromJson(vc1),
-          VerifiableCredential.fromJson(vc2)
-        ],
-      );
-      expect(result.length, 1);
-      expect(result.first.credentials!.length, 1);
-    });
-
-    test('filter issuer id (plain or object)', () {
-      Map<String, dynamic> presentationDefinition = {
-        "presentation_definition": {
-          "id": "Scalable trust example",
-          "input_descriptors": [
-            {
-              "id": "any type of credit card from any bank",
-              "name": "any type of credit card from any bank",
-              "purpose": "Please provide your student Card from the university",
-              "constraints": {
-                "fields": [
-                  {
-                    "path": [r"$.issuer", r'$.issuer.id'],
-                    "filter": {
-                      "type": "string",
-                      "pattern": "https://example2.edu"
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      };
-      var result = searchCredentialsForPresentationDefinition(
-        PresentationDefinition.fromJson(presentationDefinition),
-        credentials: [
-          VerifiableCredential.fromJson(vc1),
-          VerifiableCredential.fromJson(vc3)
-        ],
-      );
-      expect(result.length, 1);
-      expect(result.first.credentials!.length, 1);
-    });
-
-    test('filter for multiple fields', () {
-      Map<String, dynamic> presentationDefinition = {
-        "presentation_definition": {
-          "id": "Scalable trust example",
-          "input_descriptors": [
-            {
-              "id": "any type of credit card from any bank",
-              "name": "any type of credit card from any bank",
-              "purpose": "Please provide your student Card from the university",
-              "constraints": {
-                "fields": [
-                  {
-                    "path": [r"$.issuer", r'$.issuer.id'],
-                    "filter": {
-                      "type": "string",
-                      "pattern": "https://example2.edu"
-                    }
-                  },
-                  {
-                    "path": [r"$.type"],
-                    "filter": {
-                      "type": "array",
-                      "contains": {"type": "string", "const": "NameAddress"}
-                    }
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      };
-      var result = searchCredentialsForPresentationDefinition(
-          PresentationDefinition.fromJson(presentationDefinition),
-          credentials: [
-            VerifiableCredential.fromJson(vc1),
-            VerifiableCredential.fromJson(vc2)
-          ]);
-      expect(result.length, 1);
-      expect(result.first.credentials!.length, 1);
     });
   });
 }

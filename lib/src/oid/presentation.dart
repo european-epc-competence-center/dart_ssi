@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dart_ssi/credentials.dart';
+import 'package:dart_ssi/oid.dart';
 import 'package:dart_ssi/src/util/types.dart';
 import 'package:dart_ssi/src/util/utils.dart';
 
@@ -14,6 +15,7 @@ class RequestObject implements JsonObject {
   String? clientMetaDataUri;
   PresentationDefinition? presentationDefinition;
   String? presentationDefinitionUri;
+  DcqlQuery? dcqlQuery;
   ClientMetaData? clientMetaData;
 
   RequestObject(
@@ -22,11 +24,12 @@ class RequestObject implements JsonObject {
       this.nonce,
       this.state,
       this.redirectUri,
-      this.responseMode,
+      this.responseMode = 'fragment',
       this.responseType,
       this.presentationDefinition,
       this.clientMetaData,
       this.clientMetaDataUri,
+      this.dcqlQuery,
       this.presentationDefinitionUri});
 
   RequestObject.fromJson(dynamic data) {
@@ -34,7 +37,7 @@ class RequestObject implements JsonObject {
 
     responseType = jsonObject['response_type'];
     clientId = jsonObject['client_id'];
-    responseMode = jsonObject['response_mode'];
+    responseMode = jsonObject['response_mode'] ?? 'fragment';
     redirectUri = jsonObject['redirect_uri'];
     nonce = jsonObject['nonce'];
     presentationDefinitionUri = jsonObject['presentation_definition_uri'];
@@ -45,6 +48,10 @@ class RequestObject implements JsonObject {
     if (jsonObject.containsKey('presentation_definition')) {
       presentationDefinition = PresentationDefinition.fromJson(
           jsonObject['presentation_definition']);
+    }
+
+    if (jsonObject.containsKey('dcql_query')) {
+      dcqlQuery = DcqlQuery.fromJson(jsonObject['dcql_query']);
     }
 
     if (jsonObject.containsKey('client_metadata')) {
@@ -82,6 +89,9 @@ class RequestObject implements JsonObject {
     }
     if (presentationDefinition != null) {
       jsonObject['presentation_definition'] = presentationDefinition!.toJson();
+    }
+    if (dcqlQuery != null) {
+      jsonObject['dcql_query'] = dcqlQuery!.toString();
     }
 
     if (clientMetaData != null) {

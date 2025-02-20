@@ -626,17 +626,21 @@ class FormatProperty implements JsonObject {
     if (format.containsKey('ldp')) {
       ldp = LinkedDataProofFormat.fromJson(format['ldp']);
     }
-    if (format.containsKey('ldp_vc')) {
-      ldpVc = LinkedDataProofFormat.fromJson(format['ldp_vc']);
+    if (format.containsKey(OidCredentialFormat.ldpVc)) {
+      ldpVc = LinkedDataProofFormat.fromJson(format[OidCredentialFormat.ldpVc]);
     }
     if (format.containsKey('ldp_vp')) {
       ldpVp = LinkedDataProofFormat.fromJson(format['ldp_vp']);
     }
-    if (format.containsKey('mso_mdoc')) {
-      mdocFormat = MdocFormat.fromJson(format['mso_mdoc']);
+    if (format.containsKey(OidCredentialFormat.msoMdoc)) {
+      mdocFormat = MdocFormat.fromJson(format[OidCredentialFormat.msoMdoc]);
     }
-    if (format.containsKey('vc+sd-jwt')) {
-      sdJwtVcFormat = SdJwtVcFormat.fromJson(format['vc+sd-jwt']);
+    if (format.containsKey(OidCredentialFormat.sdJwt)) {
+      sdJwtVcFormat = SdJwtVcFormat.fromJson(format[OidCredentialFormat.sdJwt]);
+    }
+    if (format.containsKey(OidCredentialFormat.sdJwtDc)) {
+      sdJwtVcFormat =
+          SdJwtVcFormat.fromJson(format[OidCredentialFormat.sdJwtDc]);
     }
   }
 
@@ -651,7 +655,7 @@ class FormatProperty implements JsonObject {
     if (ldpVc != null) jsonObject['ldp_vc'] = ldpVc!.toJson();
     if (mdocFormat != null) jsonObject['mso_mdoc'] = mdocFormat!.toJson();
     if (sdJwtVcFormat != null) {
-      jsonObject[OidCredentialFormat.sdJwt] = sdJwtVcFormat!.toJson();
+      jsonObject[OidCredentialFormat.sdJwtDc] = sdJwtVcFormat!.toJson();
     }
     return jsonObject;
   }
@@ -755,7 +759,7 @@ class LinkedDataProofFormat implements JsonObject {
     if (proofTypeTmp.containsKey('proof_type')) {
       proofType = proofTypeTmp['proof_type'].cast<String>();
     } else {
-      throw FormatException('JwtFormat needs alg property');
+      throw FormatException('JwtFormat needs proof_type property');
     }
   }
 
@@ -776,24 +780,39 @@ enum SubmissionRequirementRule { all, pick }
 
 enum StatusDirective { required, allowed, disallowed }
 
-/// Object used when a credential-List is filtered with a presentationDefinition
+/// Object used when a credential-List is filtered with a presentationDefinition or DcqlQuery
 class FilterResult implements JsonObject {
-  List<VerifiableCredential>? credentials;
-  late String presentationDefinitionId;
+  String presentationDefinitionId;
   SubmissionRequirement? submissionRequirement;
-  late List<String> matchingDescriptorIds;
+  List<String> matchingDescriptorIds;
   List<InputDescriptorConstraints>? selfIssuable;
   bool fulfilled;
+
+  /// Whether this result is required; for presentation Definitions, every result is required
+  bool required;
+
+  /// Matching credentials in mdoc format
   List<IssuerSignedObject>? isoMdocCredentials;
+
+  /// Matching credentials in sd_jwt format
   List<SdJws>? sdJwtCredentials;
 
+  /// Matching credentials in w3c VCDM format
+  List<VerifiableCredential>? credentials;
+
+  /// Matching results, if from_nested is used in submission requirement or options
+  /// of CredentialSetQuery contains more than one entry
+  List<FilterResult>? nestedResults;
+
   FilterResult(
-      {required this.credentials,
+      {this.credentials,
       required this.matchingDescriptorIds,
       this.submissionRequirement,
       required this.presentationDefinitionId,
+      this.nestedResults,
       this.selfIssuable,
       this.fulfilled = true,
+      this.required = true,
       this.isoMdocCredentials,
       this.sdJwtCredentials});
 

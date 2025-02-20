@@ -1322,9 +1322,40 @@ FilterResult _processSubmissionRequirement(
     Map<String, dynamic> descriptorGroups,
     SubmissionRequirement requirement,
     String definitionId) {
-  if (requirement.fromNested != null) {
-    //TODO:process path nested in submission requirement
-    throw UnimplementedError('Cant process from nested entries yet');
+  if (requirement.fromNested != null && requirement.fromNested!.isNotEmpty) {
+    List<FilterResult> result = [];
+    for (var nestedRequirement in requirement.fromNested!) {
+      result.add(_processSubmissionRequirement(filterResultPerDescriptor,
+          descriptorGroups, nestedRequirement, definitionId));
+    }
+
+    bool fulfilled = true;
+    if (requirement.rule == SubmissionRequirementRule.all) {
+      for (var r in result) {
+        if (!r.fulfilled) {
+          fulfilled = false;
+        }
+        break;
+      }
+    } else if (requirement.rule == SubmissionRequirementRule.pick) {
+      int f = 0;
+      for (var r in result) {
+        if (r.fulfilled) f++;
+      }
+
+      if (requirement.min != null && f < requirement.min!) {
+        fulfilled = false;
+      }
+      if (requirement.count != null && f < requirement.count!) {
+        fulfilled = false;
+      }
+    }
+
+    return FilterResult(
+        matchingDescriptorIds: [],
+        presentationDefinitionId: definitionId,
+        fulfilled: fulfilled,
+        nestedResults: result);
   }
 
   List<String> accordingDescriptors = descriptorGroups[requirement.from];
@@ -1376,6 +1407,7 @@ FilterResult _processSubmissionRequirement(
         for (var c1 in credsForDescriptor) {
           if (!_containsCredential(creds, c1)) toAdd.add(c1);
         }
+
         creds += toAdd;
       }
     }
@@ -1428,8 +1460,14 @@ FilterResult _processSubmissionRequirement(
 bool _containsCredential(
     List<VerifiableCredential> toCheck, VerifiableCredential candidate) {
   for (var c in toCheck) {
-    if (c.id == candidate.id) {
-      return true;
+    if (c.proof?.proofValue != null && candidate.proof?.proofValue != null) {
+      if (c.proof!.proofValue! == candidate.proof!.proofValue) {
+        return true;
+      }
+    } else if (c.proof?.jws != null && candidate.proof?.jws != null) {
+      if (c.proof!.jws! == candidate.proof!.jws) {
+        return true;
+      }
     }
   }
 
@@ -1453,6 +1491,138 @@ bool _containsCredentialSd(List<sd_jwt.SdJws> toCheck, sd_jwt.SdJws candidate) {
   return parsed.contains(candidate.toCompactSerialization());
 }
 
+List<VerifiableCredential> _filterW3cVc(InputDescriptor descriptor,
+    List<VerifiableCredential> credentials, FormatProperty? format) {
+  List<VerifiableCredential> candidateW3C = [];
+
+  if (descriptor.constraints?.fields != null) {
+    var fields = descriptor.constraints!.fields!;
+
+    List<Map<String, dynamic>> parsed;
+    if (descriptor.constraints!.subjectIsIssuer != null &&
+        descriptor.constraints!.subjectIsIssuer! == Limiting.required) {
+      parsed = [];
+      for (var cred in credentials) {
+        if (cred.isSelfIssued()) {
+          parsed.add(cred.toJson());
+        }
+      }
+    } else {
+      parsed = credentials.map((e) => e.toJson()).toList();
+    }
+    List<Map<String, dynamic>> res;
+    (res, _, _) = _evaluateInputDescriptorFields(fields, parsed);
+    candidateW3C = res.map((e) => VerifiableCredential.fromJson(e)).toList();
+  } else {
+    candidateW3C = credentials;
+  }
+
+  //check against format
+  if (format != null) {
+    List<VerifiableCredential> candidateFormatFiltered = [];
+    for (var cred in candidateW3C) {
+      String credProofFormat = cred.proof!.type;
+      if (format.ldpVc != null) {
+        if (format.ldpVc!.proofType.contains(credProofFormat)) {
+          candidateFormatFiltered.add(cred);
+        }
+      }
+    }
+    candidateW3C = candidateFormatFiltered;
+  }
+
+  return candidateW3C;
+}
+
+List<iso.IssuerSignedObject> _filterMdocCredentials(
+    InputDescriptor descriptor, List<iso.IssuerSignedObject> credentials) {
+  List<iso.IssuerSignedObject> candidateIso = [];
+
+  print('start filter mdoc');
+  List<Map<String, dynamic>> input = [];
+  List<iso.IssuerSignedObject> undisclosedCreds = [];
+  for (int i = 0; i < credentials.length; i++) {
+    var c = credentials[i];
+    var mso = iso.MobileSecurityObject.fromCbor(c.issuerAuth.payload);
+    Map<String, dynamic> mapped = {};
+
+    mapped['_id'] = i;
+    if (mso.docType == descriptor.id) {
+      undisclosedCreds.add(c);
+      for (var nameSpace in c.items.keys) {
+        var data = c.items[nameSpace]!;
+        var mapPerNS = <String, dynamic>{};
+        for (var i in data) {
+          mapPerNS[i.dataElementIdentifier] = i.dataElementValue;
+        }
+        mapped[nameSpace] = mapPerNS;
+      }
+
+      input.add(mapped);
+    }
+  }
+  if (input.isNotEmpty && descriptor.constraints?.fields != null) {
+    var fields = descriptor.constraints!.fields!;
+    List<Map<String, dynamic>> res;
+    Map<String, Map<String, bool>> res2;
+    print(input.length);
+    print(input);
+    (res, res2, _) = _evaluateInputDescriptorFields(fields, input);
+    print(res);
+    for (var candidate in res) {
+      var id = candidate['_id'] is int
+          ? candidate['_id']
+          : int.parse(candidate['_id']);
+      var cred = credentials[id];
+      var mso = iso.MobileSecurityObject.fromCbor(cred.issuerAuth.payload);
+      var r = iso.getDataToReveal(
+          iso.ItemsRequest(docType: mso.docType, nameSpaces: res2), cred);
+      candidateIso
+          .add(iso.IssuerSignedObject(issuerAuth: cred.issuerAuth, items: r));
+    }
+  } else {
+    candidateIso = undisclosedCreds;
+  }
+
+  return candidateIso;
+}
+
+List<sd_jwt.SdJws> _filterSdJwt(
+    InputDescriptor descriptor, List<sd_jwt.SdJws> credentials) {
+  List<sd_jwt.SdJws> candidateSdJwt = [];
+
+  if (descriptor.constraints?.fields != null) {
+    List<Map<String, dynamic>> input = [];
+    for (int i = 0; i < credentials.length; i++) {
+      var sdJws = credentials[i];
+      var sd = sdJws.toSdJwt();
+      var c = sd.additionalClaims ?? {};
+      c['_id'] = i;
+      input.add(c);
+    }
+    List<Map<String, dynamic>> res;
+    List<JsonPath> res2;
+    (res, _, res2) =
+        _evaluateInputDescriptorFields(descriptor.constraints!.fields!, input);
+    print(res);
+
+    for (var candidate in res) {
+      var id = candidate['_id'] is int
+          ? candidate['_id']
+          : int.parse(candidate['_id']);
+      var cred = credentials[id];
+      if (descriptor.constraints?.limitDisclosure != null) {
+        var disclosed = cred.disclose(res2);
+        candidateSdJwt.add(disclosed);
+      } else {
+        candidateSdJwt.add(cred);
+      }
+    }
+  }
+
+  return candidateSdJwt;
+}
+
 FilterResult _processInputDescriptor(
     String definitionId,
     InputDescriptor descriptor,
@@ -1460,159 +1630,55 @@ FilterResult _processInputDescriptor(
     List<VerifiableCredential>? credentials,
     List<iso.IssuerSignedObject>? isoMdocCredentials,
     List<sd_jwt.SdJws>? sdJwtCredentials) {
+  List<VerifiableCredential> candidateW3C = [];
+  List<iso.IssuerSignedObject> candidateIso = [];
+  List<sd_jwt.SdJws> candidateSdJwt = [];
+
   // evaluate Format
   var localFormat = descriptor.format ?? globalFormat;
   if (localFormat != null) {
     if (localFormat.ldpVp != null ||
         localFormat.ldp != null ||
         localFormat.ldpVc != null) {
-      if (credentials == null || credentials.isEmpty) {
-        throw Exception('No credentials for this format');
+      if (credentials != null && credentials.isNotEmpty) {
+        candidateW3C = _filterW3cVc(descriptor, credentials, localFormat);
       }
-    } else if (localFormat.mdocFormat != null) {
-      if (isoMdocCredentials == null) {
-        throw Exception('No credentials for this format');
-      }
-    } else if (localFormat.sdJwtVcFormat != null) {
-      if (sdJwtCredentials == null || sdJwtCredentials.isEmpty) {
-        throw Exception('No credentials for this format');
-      }
+    } else if (localFormat.mdocFormat != null &&
+        isoMdocCredentials != null &&
+        isoMdocCredentials.isNotEmpty) {
+      candidateIso = _filterMdocCredentials(descriptor, isoMdocCredentials);
+    } else if (localFormat.sdJwtVcFormat != null &&
+        sdJwtCredentials != null &&
+        sdJwtCredentials.isNotEmpty) {
+      candidateSdJwt = _filterSdJwt(descriptor, sdJwtCredentials);
     } else {
       throw Exception('unsupported Format');
     }
+  } else {
+    candidateW3C = _filterW3cVc(descriptor, credentials ?? [], null);
+    candidateIso = _filterMdocCredentials(descriptor, isoMdocCredentials ?? []);
+    candidateSdJwt = _filterSdJwt(descriptor, sdJwtCredentials ?? []);
   }
 
-  List<VerifiableCredential> candidateW3C = [];
-  List<iso.IssuerSignedObject> candidateIso = [];
-  List<sd_jwt.SdJws> candidateSdJwt = [];
-
-  if (descriptor.constraints != null) {
-    if (descriptor.constraints!.isHolder != null) {
-      throw UnimplementedError('is_holder property is not supported yet');
-    }
-    if (descriptor.constraints!.sameSubject != null) {
-      throw UnimplementedError('same_subject feature is not supported yet');
-    }
-    if (descriptor.constraints!.statuses != null) {
-      throw UnimplementedError('statuses feature is not supported yet');
-    }
-
-    if (descriptor.constraints!.fields != null) {
-      var fields = descriptor.constraints!.fields!;
-
-      if (credentials != null) {
-        List<Map<String, dynamic>> parsed;
-        if (descriptor.constraints!.subjectIsIssuer != null &&
-            descriptor.constraints!.subjectIsIssuer! == Limiting.required) {
-          parsed = [];
-          for (var cred in credentials) {
-            if (cred.isSelfIssued()) {
-              parsed.add(cred.toJson());
-            }
-          }
-        } else {
-          parsed = credentials.map((e) => e.toJson()).toList();
-        }
-        List<Map<String, dynamic>> res;
-        (res, _, _) = _evaluateInputDescriptorFields(fields, parsed);
-        candidateW3C =
-            res.map((e) => VerifiableCredential.fromJson(e)).toList();
-      }
-      if (isoMdocCredentials != null) {
-        print('start filter mdoc');
-        List<Map<String, dynamic>> input = [];
-        for (int i = 0; i < isoMdocCredentials.length; i++) {
-          var c = isoMdocCredentials[i];
-          Map<String, dynamic> mapped = {};
-          mapped['_id'] = i;
-          for (var nameSpace in c.items.keys) {
-            var data = c.items[nameSpace]!;
-            var mapPerNS = <String, dynamic>{};
-            for (var i in data) {
-              mapPerNS[i.dataElementIdentifier] = i.dataElementValue;
-            }
-            mapped[nameSpace] = mapPerNS;
-          }
-
-          input.add(mapped);
-        }
-        List<Map<String, dynamic>> res;
-        Map<String, Map<String, bool>> res2;
-        print(input.length);
-        print(input);
-        (res, res2, _) = _evaluateInputDescriptorFields(fields, input);
-        print(res);
-        for (var candidate in res) {
-          var id = candidate['_id'] is int
-              ? candidate['_id']
-              : int.parse(candidate['_id']);
-          var cred = isoMdocCredentials[id];
-          var mso = iso.MobileSecurityObject.fromCbor(cred.issuerAuth.payload);
-          var r = iso.getDataToReveal(
-              iso.ItemsRequest(docType: mso.docType, nameSpaces: res2), cred);
-          candidateIso.add(
-              iso.IssuerSignedObject(issuerAuth: cred.issuerAuth, items: r));
-        }
-      }
-
-      if (sdJwtCredentials != null) {
-        List<Map<String, dynamic>> input = [];
-        for (int i = 0; i < sdJwtCredentials.length; i++) {
-          var sdJws = sdJwtCredentials[i];
-          var sd = sdJws.toSdJwt();
-          var c = sd.additionalClaims ?? {};
-          c['_id'] = i;
-          input.add(c);
-        }
-        List<Map<String, dynamic>> res;
-        List<JsonPath> res2;
-        (res, _, res2) = _evaluateInputDescriptorFields(fields, input);
-        print(res);
-
-        for (var candidate in res) {
-          var id = candidate['_id'] is int
-              ? candidate['_id']
-              : int.parse(candidate['_id']);
-          var cred = sdJwtCredentials[id];
-          var disclosed = cred.disclose(res2);
-          candidateSdJwt.add(disclosed);
-        }
-      }
-    }
-  }
-
-  //check against format
-  if (localFormat != null) {
-    List<VerifiableCredential> candidateFormatFiltered = [];
-    for (var cred in candidateW3C) {
-      String credProofFormat = cred.proof!.type;
-      if (localFormat.ldpVc != null) {
-        if (localFormat.ldpVc!.proofType.contains(credProofFormat)) {
-          candidateFormatFiltered.add(cred);
-        }
-      }
-    }
-
-    return FilterResult(
-        selfIssuable: descriptor.constraints?.subjectIsIssuer != null
-            ? [descriptor.constraints!]
-            : null,
-        credentials: candidateFormatFiltered,
-        matchingDescriptorIds: [descriptor.id],
-        presentationDefinitionId: definitionId,
-        isoMdocCredentials: candidateIso,
-        sdJwtCredentials: candidateSdJwt);
-  }
+  // if (descriptor.constraints!.isHolder != null) {
+  //   throw UnimplementedError('is_holder property is not supported yet');
+  // }
+  // if (descriptor.constraints!.sameSubject != null) {
+  //   throw UnimplementedError('same_subject feature is not supported yet');
+  // }
+  // if (descriptor.constraints!.statuses != null) {
+  //   throw UnimplementedError('statuses feature is not supported yet');
+  // }
 
   return FilterResult(
       selfIssuable: descriptor.constraints?.subjectIsIssuer != null
           ? [descriptor.constraints!]
           : null,
-      credentials: candidateW3C,
+      credentials: candidateW3C.isEmpty ? null : candidateW3C,
       matchingDescriptorIds: [descriptor.id],
       presentationDefinitionId: definitionId,
-      isoMdocCredentials: candidateIso,
-      sdJwtCredentials: candidateSdJwt);
+      isoMdocCredentials: candidateIso.isEmpty ? null : candidateIso,
+      sdJwtCredentials: candidateSdJwt.isEmpty ? null : candidateSdJwt);
 }
 
 (
