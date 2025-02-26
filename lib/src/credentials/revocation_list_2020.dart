@@ -8,15 +8,15 @@ import 'package:dart_ssi/src/util/utils.dart';
 import 'package:dart_ssi/src/wallet/wallet_store.dart';
 
 class RevocationList2020Status extends CredentialStatus {
-  late String revocationListIndex;
-  late String revocationListCredential;
+  String revocationListIndex;
+  String revocationListCredential;
 
   RevocationList2020Status(
       {required String id,
       required this.revocationListCredential,
       required this.revocationListIndex,
       Map<String, dynamic>? originalData})
-      : super(id, 'RevocationList2020Status', originalData);
+      : super(id, 'RevocationList2020Status');
 
   factory RevocationList2020Status.fromJson(dynamic jsonData) {
     var data = credentialToMap(jsonData);
@@ -81,7 +81,7 @@ class StatusList2021Entry extends CredentialStatus {
       required this.statusListCredential,
       required this.statusListIndex,
       Map<String, dynamic>? originalData})
-      : super(id, 'StatusList2021Entry', originalData);
+      : super(id, 'StatusList2021Entry');
 
   factory StatusList2021Entry.fromJson(dynamic jsonData) {
     var data = credentialToMap(jsonData);
@@ -171,9 +171,7 @@ class StatusList2021Credential extends RevocationList2020Credential {
       required super.issuanceDate,
       super.issuer,
       required super.expirationDate})
-      : super(
-            subjectId: subjectId,
-            revocationList: revocationList) {
+      : super(subjectId: subjectId, revocationList: revocationList) {
     type = ["VerifiableCredential", "StatusList2021Credential"];
     context = [credentialsV1Iri, statusList2021ContextIri];
     credentialSubject = {
@@ -186,8 +184,7 @@ class StatusList2021Credential extends RevocationList2020Credential {
     }
   }
 
-  StatusList2021Credential.fromJson(super.jsonData)
-      : super.fromJson() {
+  StatusList2021Credential.fromJson(super.jsonData) : super.fromJson() {
     var purpose = credentialSubject['statusPurpose'];
     if (purpose == CredentialStatus2021Purpose.revocation.value) {
       statusPurpose = CredentialStatus2021Purpose.revocation;
@@ -223,8 +220,7 @@ class RevocationList2020Credential extends VerifiableCredential {
     }
   }
 
-  RevocationList2020Credential.fromJson(super.jsonData)
-      : super.fromJson() {
+  RevocationList2020Credential.fromJson(super.jsonData) : super.fromJson() {
     subjectId = credentialSubject['id'];
 
     var type = credentialSubject['type'];

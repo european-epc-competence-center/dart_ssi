@@ -5,16 +5,16 @@ import 'dart:typed_data';
 import 'package:base_codecs/base_codecs.dart';
 import 'package:crypto/crypto.dart';
 import 'package:crypto_keys/crypto_keys.dart';
+import 'package:dart_ssi/credentials.dart';
 import 'package:dart_ssi/did.dart';
 import 'package:dart_ssi/src/credentials/jsonLdContext/json_web_signature_2020_context.dart';
+import 'package:dart_ssi/src/util/utils.dart';
 import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
 import 'package:json_ld_processor/json_ld_processor.dart';
+import 'package:sd_jwt/sd_jwt.dart' as sd_jwt;
 import 'package:web3dart/crypto.dart' as web3_crypto;
 
-import '../util/utils.dart';
 import '../wallet/wallet_store.dart';
-import 'credential_operations.dart';
-import 'jsonLdContext/ed25519_signature.dart';
 
 abstract class CredentialSigner {
   /// JWA alg value
@@ -28,6 +28,46 @@ abstract class CredentialSigner {
   FutureOr<Uint8List> sign(Uint8List data);
 
   FutureOr<bool> verify(Uint8List data, Uint8List signature);
+}
+
+class JwkCredentialSigner extends CredentialSigner {
+  sd_jwt.Jwk jwk;
+  JwkCredentialSigner(this.jwk) : super('', jwk.keyId ?? '');
+  @override
+  FutureOr<Uint8List> sign(Uint8List data) {
+    // TODO: implement sign
+    throw UnimplementedError();
+  }
+
+  @override
+  FutureOr<bool> verify(Uint8List data, Uint8List signature) {
+    if (jwk.key is sd_jwt.EdPublicKey) {
+      return ed.verify(
+          ed.PublicKey((jwk.key as sd_jwt.EdPublicKey).pubA), data, signature);
+    } else if (jwk.key is sd_jwt.EcPublicKey) {
+      var k = jwk.key as sd_jwt.EcPublicKey;
+      var crypto =
+          sd_jwt.PointyCastleCryptoProvider(jwk.key as sd_jwt.AsymmetricKey);
+      sd_jwt.SigningAlgorithm algorithm;
+      if (k.curve == sd_jwt.Curve.p256k) {
+        algorithm = sd_jwt.SigningAlgorithm.ecdsaSha256Koblitz;
+      } else if (k.curve == sd_jwt.Curve.p256) {
+        algorithm = sd_jwt.SigningAlgorithm.ecdsaSha256Prime;
+      } else if (k.curve == sd_jwt.Curve.p384) {
+        algorithm = sd_jwt.SigningAlgorithm.ecdsaSha384Prime;
+      } else if (k.curve == sd_jwt.Curve.p521) {
+        algorithm = sd_jwt.SigningAlgorithm.ecdsaSha512Prime;
+      } else {
+        throw Exception('Unsupported Curve');
+      }
+      return crypto.verify(
+          data: data,
+          algorithm: algorithm,
+          signature: sd_jwt.Signature.fromSignatureBytes(signature, algorithm));
+    } else {
+      throw Exception('Unsupported key type');
+    }
+  }
 }
 
 abstract class Signer {

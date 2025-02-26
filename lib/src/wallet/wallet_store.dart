@@ -469,7 +469,7 @@ class WalletStore {
   }
 
   /// Returns a new DID a credential could be issued for.
-  @Deprecated('deprecated in favor of getNewKey')
+  @Deprecated('deprecated in favor of generateNewKey')
   Future<String> getNextCredentialDID(
       {KeyType keyType = KeyType.ed25519, String? storageBackend}) async {
     var s = _keyStorage?[storageBackend ?? 'software'];
@@ -481,7 +481,7 @@ class WalletStore {
   }
 
   /// Returns a new connection-DID.
-  @Deprecated('deprecated in favor of getNewKey')
+  @Deprecated('deprecated in favor of generateNewKey')
   Future<String> getNextConnectionDID(
       {KeyType keyType = KeyType.x25519, String? storageBackend}) async {
     var s = _keyStorage?[storageBackend ?? 'software'];

@@ -86,11 +86,6 @@ class CredentialManifest implements JsonObject {
     }
     return map;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
 class IssuerProperty implements JsonObject {
@@ -139,11 +134,6 @@ class IssuerProperty implements JsonObject {
       map['styles'] = styles is String ? styles : styles.toJson();
     }
     return map;
-  }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
   }
 }
 
