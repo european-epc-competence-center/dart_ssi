@@ -21,7 +21,7 @@ void main() async {
 
   var issuerSigner =
       WalletCredentialSigner(issuer, issuerDid!, 'EdDsa', issuerDid);
-  await vc.buildProof(issuerSigner, LdpProofType.ed25519Signature2020);
+  await vc.sign(issuerSigner, LdpProofType.ed25519Signature2020);
 
   var holderSigner =
       WalletCredentialSigner(holder, holderDid, 'ES256', holderDid);

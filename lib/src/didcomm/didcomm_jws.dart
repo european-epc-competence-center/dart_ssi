@@ -1,10 +1,8 @@
 import 'dart:convert';
 
-import 'package:json_ld_processor/json_ld_processor.dart';
 import 'package:json_schema/json_schema.dart';
+import 'package:sd_jwt/sd_jwt.dart' as sd_jwt;
 
-import '../credentials/credential_operations.dart';
-import '../credentials/credential_signer.dart' as signer;
 import '../util/types.dart';
 import '../util/utils.dart';
 import 'didcomm_jwe.dart';
@@ -83,38 +81,54 @@ class DidcommSignedMessage extends DidcommMessage {
     }
   }
 
-  signer.Signer _determineSignerForJwk(Map<String, dynamic> jwk,
-      Function(Uri url, LoadDocumentOptions? options)? loadDocumentFunction) {
-    if (jwk['crv'] == 'P-256') {
-      return signer.Es256Signer();
-    } else if (jwk['crv'] == 'Ed25519') {
-      return signer.EdDsaSigner(loadDocumentFunction);
-    } else if (jwk['crv'] == 'secp256k1') {
-      return signer.Es256k1Signer();
-    } else {
-      throw Exception('could not examine signer');
-    }
-  }
-
   Future<void> sign(List<Map<String, dynamic>> jwkToSignWith) async {
     signatures ??= [];
     for (var jwk in jwkToSignWith) {
-      var signerImpl = _determineSignerForJwk(jwk, null);
+      var castedJwk = sd_jwt.Jwk.fromJson(jwk);
       Map<String, dynamic> protected = {
         'typ': DidcommMessageTyp.signed.value,
-        'alg': signerImpl.algValue,
-        'crv': signerImpl.crvValue
       };
-      var jws = await signStringOrJson(
-          jwk: jwk,
-          jwsHeader: protected,
-          signer: signerImpl,
-          toSign: _base64Payload != null
-              ? utf8.decode(base64Decode(_base64Payload!))
-              : payload.toJson(),
-          detached: true);
+      sd_jwt.CryptoProvider provider;
+
+      if (castedJwk.key is sd_jwt.EdPrivateKey) {
+        provider = sd_jwt.Ed25519EdwardsCryptoProvider(
+            castedJwk.key as sd_jwt.AsymmetricKey);
+        protected['crv'] = 'Ed25519';
+        protected['alg'] = 'EdDSA';
+      } else if (castedJwk.key is sd_jwt.EcPrivateKey) {
+        provider = sd_jwt.PointyCastleCryptoProvider(
+            castedJwk.key as sd_jwt.AsymmetricKey);
+        var k = castedJwk.key as sd_jwt.EcPrivateKey;
+        if (k.curve == sd_jwt.Curve.p256k) {
+          protected['crv'] = 'P-256k';
+          protected['alg'] = 'ES256';
+        } else if (k.curve == sd_jwt.Curve.p256) {
+          protected['crv'] = 'P-256';
+          protected['alg'] = 'ES256';
+        } else if (k.curve == sd_jwt.Curve.p384) {
+          protected['crv'] = 'P-384';
+          protected['alg'] = 'ES384';
+        } else if (k.curve == sd_jwt.Curve.p521) {
+          protected['crv'] = 'P-521';
+          protected['alg'] = 'ES512';
+        } else {
+          throw Exception('Unsupported curve');
+        }
+      } else {
+        throw Exception('Unsupported KeyType');
+      }
+      var jwt = sd_jwt.Jwt(
+          additionalClaims: _base64Payload != null
+              ? jsonDecode(utf8.decode(base64Decode(_base64Payload!)))
+              : payload.toJson());
+      var jws = await jwt.sign(
+          signer: provider,
+          header:
+              sd_jwt.JoseHeader.fromJson(protected) as sd_jwt.JwsJoseHeader);
+
       signatures!.add(SignatureObject(
-          signature: jws.split('..').last, protected: protected));
+          signature: jws.toCompactSerialization().split('.').last,
+          protected: jws.toCompactSerialization().split('.').first));
     }
     return;
   }
@@ -129,15 +143,23 @@ class DidcommSignedMessage extends DidcommMessage {
     }
 
     for (var s in signatures!) {
-      var encodedHeader = removePaddingFromBase64(
-          base64UrlEncode(utf8.encode(jsonEncode(s.protected))));
+      var encodedHeader = s.protected;
       var encodedPayload = _base64Payload ??
           removePaddingFromBase64(
               base64UrlEncode(utf8.encode(payload.toString())));
       var encodedSignature = s.signature;
-      valid = await verifyStringSignature(
-          '$encodedHeader.$encodedPayload.$encodedSignature',
-          jwk: publicKeyJwk);
+      var jws = sd_jwt.Jws.fromCompactSerialization(
+          '$encodedHeader.$encodedPayload.$encodedSignature');
+      var jwk = sd_jwt.Jwk.fromJson(publicKeyJwk);
+      sd_jwt.CryptoProvider provider;
+      if (jwk.keyType == sd_jwt.KeyType.okp) {
+        provider = sd_jwt.Ed25519EdwardsCryptoProvider(
+            jwk.key as sd_jwt.AsymmetricKey);
+      } else {
+        provider =
+            sd_jwt.PointyCastleCryptoProvider(jwk.key as sd_jwt.AsymmetricKey);
+      }
+      valid = await jws.verify(provider);
       if (!valid) {
         throw Exception('A Signature is wrong');
       }
@@ -161,16 +183,12 @@ class DidcommSignedMessage extends DidcommMessage {
 
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
 /// Signature of a didcomm signed message
-class SignatureObject implements JsonObject {
-  Map<String, dynamic>? protected;
+class SignatureObject extends JsonObject {
+  // base64Url encoded protected header
+  String? protected;
   Map<String, dynamic>? header;
   late String signature;
 
@@ -179,8 +197,7 @@ class SignatureObject implements JsonObject {
   SignatureObject.fromJson(dynamic jsonObject) {
     var sig = credentialToMap(jsonObject);
     if (sig.containsKey('protected')) {
-      protected = jsonDecode(
-          utf8.decode(base64Decode(addPaddingToBase64(sig['protected']!))));
+      protected = sig['protected'];
     }
     header = sig['header'];
     if (sig.containsKey('signature')) {
@@ -200,10 +217,5 @@ class SignatureObject implements JsonObject {
     if (header != null) jsonObject['header'] = header;
     jsonObject['signature'] = signature;
     return jsonObject;
-  }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
   }
 }

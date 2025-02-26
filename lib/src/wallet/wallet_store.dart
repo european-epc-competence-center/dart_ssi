@@ -326,12 +326,12 @@ class WalletStore {
   /// Stores a credential permanently.
   ///
   /// What should be stored consists of three parts
-  /// - a signed credential [w3cCred] containing hashes of all attribute-values
-  /// - a json structure [plaintextCred] containing hashes, salts and values per credential attribute
+  /// - a signed credential [verifiableCredential]
   /// - the [credentialId] which is the did / keyId the credential was issued to
-  Future<void> storeCredential(
-      String? w3cCred, String? plaintextCred, String credentialId) async {
-    var tmp = Credential('', w3cCred!, plaintextCred!);
+  /// - optional [metadata]
+  Future<void> storeCredential(String verifiableCredential, String credentialId,
+      [String? metadata]) async {
+    var tmp = Credential(verifiableCredential, metadata ?? '');
     await _credentialBox!.put(credentialId, tmp);
   }
 
@@ -439,9 +439,9 @@ class WalletStore {
   }
 
   /// Stores a credential issued to [holderDid].
-  void toIssuingHistory(
-      String holderDid, String plaintextCredential, String w3cCredential) {
-    var tmp = Credential('', w3cCredential, plaintextCredential);
+  void toIssuingHistory(String holderDid, String verifiableCredential,
+      [String? metadata]) {
+    var tmp = Credential(verifiableCredential, metadata ?? '');
     _issuingHistory!.put(holderDid, tmp);
   }
 

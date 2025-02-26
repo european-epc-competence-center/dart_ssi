@@ -232,11 +232,6 @@ class DidcommEncryptedMessage extends DidcommMessage {
     };
   }
 
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
-
   _decodeProtected() {
     Map<String, dynamic> protectedJson = jsonDecode(
         utf8.decode(base64Decode(addPaddingToBase64(protectedHeader))));

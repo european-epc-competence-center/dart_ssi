@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dart_ssi/credentials.dart';
 import 'package:dart_ssi/oid.dart';
+import 'package:dart_ssi/src/util/types.dart';
 import 'package:dart_ssi/src/util/utils.dart';
 import 'package:iso_mdoc/iso_mdoc.dart';
 import 'package:json_path/json_path.dart';
@@ -74,7 +75,7 @@ class ClaimPathPointer {
   }
 }
 
-class DcqlQuery {
+class DcqlQuery extends JsonObject {
   List<CredentialQuery> credentials;
   List<CredentialSetQuery>? credentialSets;
 
@@ -99,6 +100,7 @@ class DcqlQuery {
     return DcqlQuery(credentials: c, credentialSets: cs);
   }
 
+  @override
   Map<String, dynamic> toJson() {
     var data = <String, dynamic>{
       'credentials': credentials.map((e) => e.toJson()).toList()
@@ -110,14 +112,9 @@ class DcqlQuery {
 
     return data;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class CredentialQuery {
+class CredentialQuery extends JsonObject {
   String id, format;
   CredentialQueryMetadata? meta;
   List<ClaimsQuery>? claims;
@@ -157,6 +154,7 @@ class CredentialQuery {
         claimSets: cs);
   }
 
+  @override
   Map<String, dynamic> toJson() {
     var data = <String, dynamic>{'id': id, 'format': format};
     if (meta != null) {
@@ -171,14 +169,9 @@ class CredentialQuery {
 
     return data;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class CredentialSetQuery {
+class CredentialSetQuery extends JsonObject {
   List<List<String>> options;
   bool required;
   String? purpose;
@@ -202,6 +195,7 @@ class CredentialSetQuery {
         purpose: data['purpose']);
   }
 
+  @override
   Map<String, dynamic> toJson() {
     var data = {'options': options, 'required': required};
     if (purpose != null) {
@@ -209,14 +203,9 @@ class CredentialSetQuery {
     }
     return data;
   }
-
-  @override
-  toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class CredentialQueryMetadata {
+class CredentialQueryMetadata extends JsonObject {
   CredentialQueryMetadata();
 
   factory CredentialQueryMetadata.fromJson(dynamic json) {
@@ -232,13 +221,9 @@ class CredentialQueryMetadata {
     }
   }
 
+  @override
   Map<String, dynamic> toJson() {
     return {};
-  }
-
-  @override
-  toString() {
-    return jsonEncode(toJson());
   }
 }
 
@@ -264,7 +249,7 @@ class CredentialQueryMetadataMsoMdoc extends CredentialQueryMetadata {
   }
 }
 
-class ClaimsQuery {
+class ClaimsQuery extends JsonObject {
   String? id;
   ClaimPathPointer path;
   List<dynamic>? values;
@@ -288,6 +273,7 @@ class ClaimsQuery {
         intentToRetain: data['intent_to_retain']);
   }
 
+  @override
   Map<String, dynamic> toJson() {
     var data = <String, dynamic>{'path': path.toJson()};
     if (id != null) {
@@ -301,11 +287,6 @@ class ClaimsQuery {
     }
 
     return data;
-  }
-
-  @override
-  toString() {
-    return jsonEncode(toJson());
   }
 }
 

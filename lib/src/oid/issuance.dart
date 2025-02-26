@@ -1,11 +1,9 @@
-import 'dart:convert';
-
 import 'package:dart_ssi/src/oid/dcql.dart';
 
 import '../util/types.dart';
 import '../util/utils.dart';
 
-class OidCredentialOffer implements JsonObject {
+class OidCredentialOffer extends JsonObject {
   late String credentialIssuer;
   // draft 12: List of configuration ids; Draft 11 either configurationId or CredentialsSupportedObject
   List<dynamic>? credentials;
@@ -91,14 +89,9 @@ class OidCredentialOffer implements JsonObject {
 
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-abstract class GrantType implements JsonObject {
+abstract class GrantType extends JsonObject {
   String get grantType;
   static final String preAuthType =
       'urn:ietf:params:oauth:grant-type:pre-authorized_code';
@@ -130,11 +123,6 @@ class UnsupportedGrant extends GrantType {
   Map<String, dynamic> toJson() {
     return values;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
 class AuthorizationCodeGrant extends GrantType {
@@ -159,11 +147,6 @@ class AuthorizationCodeGrant extends GrantType {
       jsonObject['authorization_server'] = authorizationServer;
     }
     return jsonObject;
-  }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
   }
 }
 
@@ -249,14 +232,9 @@ class PreAuthCodeGrant extends GrantType {
 
     return json;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class AuthorizationDetailsObject implements JsonObject {
+class AuthorizationDetailsObject extends JsonObject {
   final String type = 'openid_credential';
   String? credentialConfigurationId;
   String? format;
@@ -450,14 +428,9 @@ class AuthorizationDetailsObject implements JsonObject {
 
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class OidTokenResponse implements JsonObject {
+class OidTokenResponse extends JsonObject {
   // Parameter from RFC 6749 OAuth 2.0
   String? accessToken, tokenType;
   String? refreshToken, scope;
@@ -541,14 +514,9 @@ class OidTokenResponse implements JsonObject {
     }
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class CredentialIssuerMetaData implements JsonObject {
+class CredentialIssuerMetaData extends JsonObject {
   late String credentialIssuer;
   List<String>? authorizationServer,
       credentialResponseEncryptionAlgSupported,
@@ -731,14 +699,9 @@ class CredentialIssuerMetaData implements JsonObject {
 
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class ClaimsDescriptionObject implements JsonObject {
+class ClaimsDescriptionObject extends JsonObject {
   ClaimPathPointer path;
   bool mandatory;
   List<OidDisplayObject>? display;
@@ -772,14 +735,9 @@ class ClaimsDescriptionObject implements JsonObject {
     }
     return jsonData;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class KeyAttestationDetails implements JsonObject {
+class KeyAttestationDetails extends JsonObject {
   List<String>? keyStorage;
   List<String>? userAuthentication;
 
@@ -804,14 +762,9 @@ class KeyAttestationDetails implements JsonObject {
     }
     return jsonData;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class ProofTypesSupportedDetails implements JsonObject {
+class ProofTypesSupportedDetails extends JsonObject {
   List<dynamic> signingAlgValuesSupported;
   KeyAttestationDetails? keyAttestationRequired;
 
@@ -848,14 +801,9 @@ class ProofTypesSupportedDetails implements JsonObject {
     }
     return jsonData;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class CredentialsSupportedObject implements JsonObject {
+class CredentialsSupportedObject extends JsonObject {
   late String format;
   String? scope;
   List<String>? cryptographicBindingMethods,
@@ -1139,14 +1087,9 @@ class CredentialsSupportedObject implements JsonObject {
 
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class CredentialSubjectMetadata implements JsonObject {
+class CredentialSubjectMetadata extends JsonObject {
   bool mandatory = false;
   String? valueType;
   List<OidDisplayObject>? display;
@@ -1195,7 +1138,7 @@ class CredentialSubjectMetadata implements JsonObject {
   }
 }
 
-class OidDisplayObject implements JsonObject {
+class OidDisplayObject extends JsonObject {
   String? name;
   String? locale;
   UrlData? logo;
@@ -1247,14 +1190,9 @@ class OidDisplayObject implements JsonObject {
     }
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class UrlData implements JsonObject {
+class UrlData extends JsonObject {
   String? url;
   String? altText;
 
@@ -1276,14 +1214,9 @@ class UrlData implements JsonObject {
     }
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class OidCredentialRequest implements JsonObject {
+class OidCredentialRequest extends JsonObject {
   String? format, credentialIdentifier;
   Map<String, dynamic>? responseEncryptionJwk;
   String? responseEncryptionAlg, responseEncryptionEnc;
@@ -1513,14 +1446,9 @@ class OidCredentialRequest implements JsonObject {
 
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class OidBatchCredentialRequest implements JsonObject {
+class OidBatchCredentialRequest extends JsonObject {
   List<OidCredentialRequest> credentialRequests;
 
   OidBatchCredentialRequest(this.credentialRequests);
@@ -1539,14 +1467,9 @@ class OidBatchCredentialRequest implements JsonObject {
       'credential_requests': credentialRequests.map((e) => e.toJson()).toList()
     };
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class OidBatchCredentialResponse implements JsonObject {
+class OidBatchCredentialResponse extends JsonObject {
   List<OidCredentialResponse> credentialResponses;
   String? cNonce;
   int? cNonceExpiresIn;
@@ -1578,14 +1501,9 @@ class OidBatchCredentialResponse implements JsonObject {
 
     return data;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class CredentialRequestProof implements JsonObject {
+class CredentialRequestProof extends JsonObject {
   String proofType;
   dynamic proofValue;
 
@@ -1622,14 +1540,9 @@ class CredentialRequestProof implements JsonObject {
 
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class OidCredentialResponse implements JsonObject {
+class OidCredentialResponse extends JsonObject {
   dynamic credential;
   String? transactionId,
       cNonce,
@@ -1683,11 +1596,6 @@ class OidCredentialResponse implements JsonObject {
     }
 
     return jsonObject;
-  }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
   }
 }
 

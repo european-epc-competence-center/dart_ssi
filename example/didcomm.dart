@@ -20,6 +20,7 @@ import 'dart:convert';
 import 'package:dart_ssi/credentials.dart';
 import 'package:dart_ssi/did.dart';
 import 'package:dart_ssi/didcomm.dart';
+import 'package:dart_ssi/oid.dart';
 import 'package:dart_ssi/util.dart';
 import 'package:dart_ssi/wallet.dart';
 import 'package:json_path/json_path.dart';
@@ -91,8 +92,8 @@ void main() async {
   var allCreds = alice.getAllCredentials();
   List<VerifiableCredential> allW3CCreds = [];
   for (var cred in allCreds.values) {
-    if (cred.w3cCredential != '') {
-      allW3CCreds.add(VerifiableCredential.fromJson(cred.w3cCredential));
+    if (cred.verifiableCredential != '') {
+      allW3CCreds.add(VerifiableCredential.fromJson(cred.verifiableCredential));
     }
   }
   var searchResult = searchCredentialsForPresentationDefinition(
@@ -100,12 +101,28 @@ void main() async {
       credentials: allW3CCreds);
 
   //Alice realize, that she should show her Student card and build verifiable Presentation out of it
-  var presentation = await buildPresentation(
-      searchResult, alice, request.presentationDefinition[0].challenge);
+  var presentation = VerifiablePresentation(
+      verifiableCredential: searchResult.first.credentials,
+      presentationSubmission: PresentationSubmission(
+          descriptorMap: [
+            InputDescriptorMappingObject(
+                id: searchResult.first.matchingDescriptorIds.first,
+                format: OidCredentialFormat.ldpVc,
+                path: JsonPath(r'$.verifiableCredential[0]'))
+          ],
+          presentationDefinitionId:
+              searchResult.first.presentationDefinitionId));
+  for (var c in presentation.verifiableCredential!) {
+    await presentation.addProof(
+        WalletCredentialSigner(alice, c.credentialSubject['id'], 'EdDSA',
+            c.credentialSubject['id']),
+        LdpProofType.ed25519Signature2020,
+        challenge: request.presentationDefinition[0].challenge);
+  }
   print(presentation);
   //Now she puts this in a Presentation Message
-  var presentationMessage = Presentation(
-      verifiablePresentation: [VerifiablePresentation.fromJson(presentation)]);
+  var presentationMessage =
+      Presentation(verifiablePresentation: [presentation]);
   //alice generates a did she encrypts the message with
   var connectionDidAlice = await alice.generateNewKey(keyType: KeyType.x25519);
   var encryptedMessage = await presentationMessage.encrypt(
@@ -139,9 +156,10 @@ void main() async {
   var presentationMessageReceived = Presentation.fromJson(decrypted.toJson());
 
   //verifyPresentation
-  var verified = await verifyPresentation(
-      presentationMessageReceived.verifiablePresentation[0].toJson(),
-      requestPresentationStudentCard.presentationDefinition[0].challenge);
+  var verified = await presentationMessageReceived.verifiablePresentation.first
+      .verify(
+          expectedChallenge: requestPresentationStudentCard
+              .presentationDefinition.first.challenge);
   if (!verified) throw Exception('Presentation could not been verified');
 
   //check if the credential inside matches the presentation Definition
@@ -235,24 +253,25 @@ void main() async {
 
   //**** Museum ****
   //Takes credential from Request, checks if everything is fine and signs it
-  var signed = await signCredential(
-      museum, requestCredential.detail![0].credential.toJson(),
+  var museumCredentialSigner = WalletCredentialSigner(
+      museum, museumIssuerDid!, 'EdDSA', museumIssuerDid);
+  var credential = requestCredential.detail![0].credential;
+  await credential.sign(
+      museumCredentialSigner, LdpProofType.ed25519Signature2020,
       challenge: requestCredential.detail![0].options.challenge);
-  print(signed);
+  print(credential);
   //construct a issue credential message and sent credential to alice
-  var issueMessage =
-      IssueCredential(credentials: [VerifiableCredential.fromJson(signed)]);
+  var issueMessage = IssueCredential(credentials: [credential]);
 
   //***** Alice *****
   var receivedVC = issueMessage.credentials![0];
   //verify received credential
-  print(await verifyCredential(receivedVC,
+  print(await receivedVC.verify(
       expectedChallenge: requestCredential.detail![0].options.challenge));
 
   //store credential
   await alice.storeCredential(
     receivedVC.toString(),
-    '',
     aliceCredDid,
   );
 
@@ -283,10 +302,11 @@ Future<void> _issueStudentCard(WalletStore wallet) async {
       credentialSubject: studentCard,
       issuanceDate: DateTime.now());
 
-  var signedCred = await signCredential(someUniversity, cred);
+  var signer =
+      WalletCredentialSigner(someUniversity, issuerDid!, 'EdDSA', issuerDid);
+  await cred.sign(signer, LdpProofType.ed25519Signature2020);
   await wallet.storeCredential(
-    signedCred,
-    '',
+    cred.toString(),
     holderDid,
   );
 }
@@ -315,10 +335,11 @@ Future<void> _issueBusinessId(WalletStore wallet) async {
       credentialSubject: businessId,
       issuanceDate: DateTime.now());
 
-  var signedCred = await signCredential(someIssuer, cred);
+  var signer =
+      WalletCredentialSigner(someIssuer, issuerDid!, 'EdDSA', issuerDid);
+  await cred.sign(signer, LdpProofType.ed25519Signature2020);
   await wallet.storeCredential(
-    signedCred,
-    '',
+    cred.toString(),
     holderDid,
   );
 }

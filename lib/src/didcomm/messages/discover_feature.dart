@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:uuid/uuid.dart';
 
 import '../../util/types.dart';
@@ -104,7 +102,7 @@ class DiscloseMessage extends DidcommPlaintextMessage {
   }
 }
 
-class Query implements JsonObject {
+class Query extends JsonObject {
   late FeatureType featureType;
   late String match;
 
@@ -140,14 +138,9 @@ class Query implements JsonObject {
   Map<String, dynamic> toJson() {
     return {'feature-type': featureType.value, 'match': match};
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class Disclosure implements JsonObject {
+class Disclosure extends JsonObject {
   late FeatureType featureType;
   late String id;
   List<String>? roles;
@@ -192,11 +185,6 @@ class Disclosure implements JsonObject {
       asMap['roles'] = roles;
     }
     return asMap;
-  }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
   }
 }
 

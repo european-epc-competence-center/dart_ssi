@@ -7,7 +7,7 @@ import '../util/utils.dart';
 import 'did_key.dart';
 import 'did_web.dart';
 
-class DidDocument implements JsonObject {
+class DidDocument extends JsonObject {
   List<String>? context;
   late String id;
   List<String>? alsoKnownAs;
@@ -350,14 +350,9 @@ class DidDocument implements JsonObject {
 
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class VerificationMethod implements JsonObject {
+class VerificationMethod extends JsonObject {
   late String id;
   late String controller;
   late String type;
@@ -432,14 +427,9 @@ class VerificationMethod implements JsonObject {
     if (publicKeyJwk != null) jsonObject['publicKeyJwk'] = publicKeyJwk;
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class ServiceEndpoint implements JsonObject {
+class ServiceEndpoint extends JsonObject {
   late String id;
   late String type;
   late dynamic serviceEndpoint;
@@ -475,11 +465,6 @@ class ServiceEndpoint implements JsonObject {
     jsonObject['serviceEndpoint'] = serviceEndpoint;
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
 /// Resolves the Did-Document for [did].
@@ -494,7 +479,7 @@ Future<DidDocument> resolveDidDocument(String did,
   } else {
     if (resolverAddress == null) {
       throw Exception(
-          'The did con only be resolved using universal resolver, therefore the resolver address is required');
+          'The did can only be resolved using universal resolver, therefore the resolver address is required');
     }
     try {
       var res = await http

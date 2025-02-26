@@ -10,10 +10,8 @@ import 'package:dart_ssi/src/util/crypto_provider.dart';
 import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
 import 'package:elliptic/elliptic.dart' as elliptic;
 import 'package:elliptic/elliptic.dart';
-import 'package:http/http.dart' as http;
 import 'package:web3dart/crypto.dart';
 
-import '../credentials/credential_operations.dart';
 import '../wallet/wallet_store.dart';
 
 Uint8List _multibaseToUint8List(String multibase) {
@@ -178,31 +176,31 @@ String removePaddingFromBase64(String base64Input) {
   return base64Input;
 }
 
-Future<List<String>> getDidFromDidConfiguration(String url) async {
-  List<String> didsInConfig = [];
-  var uri = Uri.parse(url);
-  print('https://${uri.host}/.well-known/did-configuration');
-  try {
-    var res = await http
-        .get(Uri.parse('https://${uri.host}/.well-known/did-configuration'))
-        .timeout(Duration(seconds: 30));
-    if (res.statusCode == 200) {
-      var entries = jsonDecode(res.body);
-      List<dynamic> dids = entries['entries'];
-      await Future.forEach(dids, (dynamic element) async {
-        var jwt = element['jwt'];
-        var did = element['did'];
-        print(did);
-        var verified = await verifyStringSignature(jwt, expectedDid: did);
-        print(verified);
-        if (verified) didsInConfig.add(did);
-      });
-    }
-  } catch (e) {
-    throw Exception('Error occurred during fetch of did-configuration: $e');
-  }
-  return didsInConfig;
-}
+// Future<List<String>> getDidFromDidConfiguration(String url) async {
+//   List<String> didsInConfig = [];
+//   var uri = Uri.parse(url);
+//   print('https://${uri.host}/.well-known/did-configuration');
+//   try {
+//     var res = await http
+//         .get(Uri.parse('https://${uri.host}/.well-known/did-configuration'))
+//         .timeout(Duration(seconds: 30));
+//     if (res.statusCode == 200) {
+//       var entries = jsonDecode(res.body);
+//       List<dynamic> dids = entries['entries'];
+//       await Future.forEach(dids, (dynamic element) async {
+//         var jwt = element['jwt'];
+//         var did = element['did'];
+//         print(did);
+//         var verified = await verifyStringSignature(jwt, expectedDid: did);
+//         print(verified);
+//         if (verified) didsInConfig.add(did);
+//       });
+//     }
+//   } catch (e) {
+//     throw Exception('Error occurred during fetch of did-configuration: $e');
+//   }
+//   return didsInConfig;
+// }
 
 ASN1Set _buildSubjectInfoPart(String part, String data) {
   var set = ASN1Set();

@@ -1,11 +1,9 @@
-import 'dart:convert';
-
 import 'package:dart_ssi/credentials.dart';
 import 'package:dart_ssi/oid.dart';
 import 'package:dart_ssi/src/util/types.dart';
 import 'package:dart_ssi/src/util/utils.dart';
 
-class RequestObject implements JsonObject {
+class RequestObject extends JsonObject {
   String? responseType;
   String? responseUri;
   String? clientId;
@@ -102,14 +100,9 @@ class RequestObject implements JsonObject {
     }
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class ClientMetaData implements JsonObject {
+class ClientMetaData extends JsonObject {
   List<Map<String, dynamic>>? jwks;
   String? jwksUri;
   String? authEncryptedResponseAlg,
@@ -182,10 +175,5 @@ class ClientMetaData implements JsonObject {
     }
 
     return json;
-  }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
   }
 }

@@ -31,11 +31,12 @@ class VerifiableCredential extends JsonObject {
       required this.issuer,
       required this.credentialSubject,
       this.id,
-      required this.issuanceDate,
+      DateTime? issuanceDate,
       this.status,
       this.credentialSchema,
       this.expirationDate,
-      this.proof}) {
+      this.proof})
+      : issuanceDate = issuanceDate ?? DateTime.now() {
     if (context.first != credentialsV1Iri) {
       throw FormatException(
           'The context-Array must start with $credentialsV1Iri');
@@ -197,7 +198,7 @@ class VerifiableCredential extends JsonObject {
     return hashedProofOptions + hashedData;
   }
 
-  FutureOr<void> buildProof(CredentialSigner signer, LdpProofType proofType,
+  FutureOr<void> sign(CredentialSigner signer, LdpProofType proofType,
       {String? challenge,
       String proofPurpose = 'assertionMethod',
       Function(Uri url, LoadDocumentOptions? options) loadDocument =
@@ -225,8 +226,13 @@ class VerifiableCredential extends JsonObject {
     if (proofType == LdpProofType.jsonWebSignature2020) {
       var critical = <String, dynamic>{};
       critical['b64'] = false;
-      var header = buildJwsHeader(alg: signer.algValue, extra: critical);
-      var headerEnc = removePaddingFromBase64(header);
+      var header = JwsJoseHeader(
+          algorithm: SigningAlgorithm.eddsa25519Sha512,
+          critical: ['b64'],
+          additionalParameters: {'b64': false});
+
+      var headerEnc = removePaddingFromBase64(
+          base64UrlEncode(utf8.encode(jsonEncode(header.toJson()))));
 
       signingInput = utf8.encode('$headerEnc.') + signingInput;
     }
@@ -237,10 +243,13 @@ class VerifiableCredential extends JsonObject {
     if (proofType == LdpProofType.ed25519Signature2020) {
       proofOptions.proofValue = 'z${base58BitcoinEncode(signature)}';
     } else {
-      var critical = <String, dynamic>{};
-      critical['b64'] = false;
-      var header = buildJwsHeader(alg: signer.algValue, extra: critical);
-      var headerEnc = removePaddingFromBase64(header);
+      var header = JwsJoseHeader(
+          algorithm: SigningAlgorithm.eddsa25519Sha512,
+          critical: ['b64'],
+          additionalParameters: {'b64': false});
+
+      var headerEnc = removePaddingFromBase64(
+          base64UrlEncode(utf8.encode(jsonEncode(header.toJson()))));
       proofOptions.jws = '$headerEnc.'
           '.${base64UrlEncode(signature)}';
     }
@@ -423,6 +432,10 @@ class CredentialStatus extends JsonObject {
     }
   }
 
+  FutureOr<bool> isRevoked(VerifiableCredential credential) {
+    throw UnimplementedError();
+  }
+
   @override
   Map<String, dynamic> toJson() {
     Map<String, dynamic> jsonObject = {};
@@ -445,15 +458,22 @@ class VerifiablePresentation extends JsonObject {
   CredentialApplication? credentialApplication;
 
   VerifiablePresentation(
-      {required this.context,
-      required this.type,
+      {List<String>? context,
+      List<String>? type,
       this.verifiableCredential,
       this.id,
       this.holder,
       this.proof,
       this.presentationSubmission,
       this.credentialFulfillment,
-      this.credentialApplication});
+      this.credentialApplication})
+      : context = context ?? [credentialsV1Iri],
+        type = type ?? ['VerifiablePresentation'] {
+    if (presentationSubmission != null) {
+      this.type.add('PresentationSubmission');
+      this.context.add(presentationSubmissionContextIri);
+    }
+  }
 
   VerifiablePresentation.fromJson(dynamic jsonObject) {
     var presentation = credentialToMap(jsonObject);
@@ -555,11 +575,13 @@ class VerifiablePresentation extends JsonObject {
     var signingInput = (await _hashProofOptions(proofOptions, loadDocument)) +
         (await _hashData(loadDocument));
     if (proofType == LdpProofType.jsonWebSignature2020) {
-      var critical = <String, dynamic>{};
-      critical['b64'] = false;
-      var header = buildJwsHeader(alg: signer.algValue, extra: critical);
-      var headerEnc = removePaddingFromBase64(header);
+      var header = JwsJoseHeader(
+          algorithm: SigningAlgorithm.eddsa25519Sha512,
+          critical: ['b64'],
+          additionalParameters: {'b64': false});
 
+      var headerEnc = removePaddingFromBase64(
+          base64UrlEncode(utf8.encode(jsonEncode(header.toJson()))));
       signingInput = utf8.encode('$headerEnc.') + signingInput;
     }
 
@@ -569,10 +591,13 @@ class VerifiablePresentation extends JsonObject {
     if (proofType == LdpProofType.ed25519Signature2020) {
       proofOptions.proofValue = 'z${base58BitcoinEncode(signature)}';
     } else {
-      var critical = <String, dynamic>{};
-      critical['b64'] = false;
-      var header = buildJwsHeader(alg: signer.algValue, extra: critical);
-      var headerEnc = removePaddingFromBase64(header);
+      var header = JwsJoseHeader(
+          algorithm: SigningAlgorithm.eddsa25519Sha512,
+          critical: ['b64'],
+          additionalParameters: {'b64': false});
+
+      var headerEnc = removePaddingFromBase64(
+          base64UrlEncode(utf8.encode(jsonEncode(header.toJson()))));
       proofOptions.jws = '$headerEnc.'
           '.${base64UrlEncode(signature)}';
     }

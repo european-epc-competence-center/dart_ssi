@@ -41,7 +41,7 @@ enum DidcommMessageTyp {
   String get value => stringValues[this]!;
 }
 
-class DidcommMessage implements JsonObject {
+class DidcommMessage extends JsonObject {
   Future<DidcommEncryptedMessage> encrypt({
     KeyWrapAlgorithm keyWrapAlgorithm = KeyWrapAlgorithm.ecdh1PU,
     EncryptionAlgorithm encryptionAlgorithm = EncryptionAlgorithm.a256cbc,

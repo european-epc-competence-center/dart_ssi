@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:hive/hive.dart';
 
 part 'hive_model.g.dart';
@@ -11,35 +13,32 @@ class Credential {
 
   /// Signed version according to W3C-Data Model with all attribute values hashed.
   @HiveField(1)
-  String w3cCredential;
+  String verifiableCredential;
 
   /// Json-Structure containing hash, salt and value per attribute.
   @HiveField(2)
-  String plaintextCredential;
+  String metadata;
 
-  Credential(this.hdPath, this.w3cCredential, this.plaintextCredential);
+  Credential(this.verifiableCredential, this.metadata) : hdPath = '';
 
   /// Create a Credential object from a JSON map
   factory Credential.fromJson(Map<String, dynamic> json) {
     return Credential(
-      json['hdPath'] as String,
-      json['w3cCredential'] as String,
-      json['plaintextCredential'] as String,
+      json['verifiableCredential'] as String,
+      json['metadata'] as String,
     );
   }
 
   /// Convert a Credential object to a JSON-encodable Map
   Map<String, dynamic> toJson() {
     return {
-      'hdPath': hdPath,
-      'w3cCredential': w3cCredential,
-      'plaintextCredential': plaintextCredential,
+      'verifiableCredential': verifiableCredential,
+      'metadata': metadata,
     };
   }
 
   @override
-  String toString() =>
-      '$w3cCredential uses Path $hdPath an has this data: $plaintextCredential';
+  String toString() => jsonEncode(toJson());
 }
 
 @HiveType(typeId: 1)
@@ -54,7 +53,7 @@ class Connection {
   @HiveField(1)
   String otherDid;
 
-  /// A nma efor this connection.
+  /// A name for this connection.
   @HiveField(2)
   String name;
 

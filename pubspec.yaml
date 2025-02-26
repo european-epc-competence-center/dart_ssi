@@ -28,9 +28,10 @@ dependencies:
   iso_mdoc:  ^1.4.0
     #path: ../cbor_test
   sd_jwt:
-    git:
-      url: https://github.com/b2cm/sd_jwt
-      ref: development
+    path: ../sd-jwt
+#    git:
+#      url: https://github.com/b2cm/sd_jwt
+#      ref: development
 
 dependency_overrides:
   # pinenacl: 0.6.0

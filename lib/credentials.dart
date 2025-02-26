@@ -1,5 +1,4 @@
 export 'src/credentials/credential_manifest.dart';
-export 'src/credentials/credential_operations.dart';
 export 'src/credentials/credential_signer.dart';
 export 'src/credentials/jsonLdContext/credentials_v1.dart';
 export 'src/credentials/jsonLdContext/document_loader.dart';

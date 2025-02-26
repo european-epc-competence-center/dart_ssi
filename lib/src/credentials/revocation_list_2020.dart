@@ -4,8 +4,11 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dart_ssi/credentials.dart';
+import 'package:dart_ssi/src/exceptions/signature_exception.dart';
+import 'package:dart_ssi/src/util/crypto_provider.dart';
 import 'package:dart_ssi/src/util/utils.dart';
 import 'package:dart_ssi/src/wallet/wallet_store.dart';
+import 'package:http/http.dart';
 
 class RevocationList2020Status extends CredentialStatus {
   String revocationListIndex;
@@ -55,6 +58,31 @@ class RevocationList2020Status extends CredentialStatus {
         revocationListCredential: revocationListCredential,
         revocationListIndex: revocationListIndex,
         originalData: data);
+  }
+
+  @override
+  isRevoked(credential) async {
+    var res = await get(Uri.parse(revocationListCredential),
+            headers: {'Accept': 'application/json'})
+        .timeout(Duration(seconds: 30), onTimeout: () {
+      return Response('Timeout', 408);
+    });
+
+    if (res.statusCode == 200) {
+      var revCred = RevocationList2020Credential.fromJson(res.body);
+      try {
+        await revCred.verify();
+      } on SignatureException catch (_) {
+        throw RevokedException(
+            'could not verify RevocationListCredential', 'revErr');
+      }
+
+      var revoked = revCred.isRevoked(int.parse(revocationListIndex));
+      return revoked;
+    } else {
+      throw RevokedException(
+          'Error loading status list from $revocationListCredential', 'revErr');
+    }
   }
 
   @override
@@ -133,6 +161,36 @@ class StatusList2021Entry extends CredentialStatus {
         statusListIndex: statusListIndex,
         statusPurpose: statusPurpose,
         originalData: data);
+  }
+
+  isRevoked(credential) async {
+    var res = await get(Uri.parse(statusListCredential),
+            headers: {'Accept': 'application/json'})
+        .timeout(Duration(seconds: 30), onTimeout: () {
+      return Response('Timeout', 408);
+    });
+
+    if (res.statusCode == 200) {
+      var revCred = StatusList2021Credential.fromJson(res.body);
+
+      if (revCred.statusPurpose != statusPurpose) {
+        throw RevokedException(
+            'StatusPurpose of StatusListEntry and StatusListCredential do not match',
+            'revErr');
+      }
+      try {
+        await revCred.verify();
+      } on SignatureException catch (_) {
+        throw RevokedException(
+            'could not verify RevocationListCredential', 'revErr');
+      }
+
+      var revoked = revCred.isRevoked(int.parse(statusListIndex));
+      return revoked;
+    } else {
+      throw RevokedException(
+          'Error loading status list from $statusListCredential', 'revErr');
+    }
   }
 
   @override
@@ -238,8 +296,15 @@ class RevocationList2020Credential extends VerifiableCredential {
   Future<RevocationList2020Credential> revoke(
       int indexToRevoke, WalletStore wallet) async {
     revocationList.flipBit(indexToRevoke);
-    return RevocationList2020Credential.fromJson(
-        await signCredential(wallet, toJson()));
+    var newList = RevocationList2020Credential.fromJson(toJson());
+    var issuerId = issuer is String ? issuer : issuer['id'];
+    var signer = WalletCredentialSigner(wallet, issuerId, '', issuerId);
+    newList.sign(
+        signer,
+        proof!.type == LdpProofType.ed25519Signature2020.value
+            ? LdpProofType.ed25519Signature2020
+            : LdpProofType.jsonWebSignature2020);
+    return newList;
   }
 
   Future<RevocationList2020Credential> batchRevoke(
@@ -247,8 +312,15 @@ class RevocationList2020Credential extends VerifiableCredential {
     for (var i in indexToRevoke) {
       revocationList.flipBit(i);
     }
-    return RevocationList2020Credential.fromJson(
-        await signCredential(wallet, toJson()));
+    var newList = RevocationList2020Credential.fromJson(toJson());
+    var issuerId = issuer is String ? issuer : issuer['id'];
+    var signer = WalletCredentialSigner(wallet, issuerId, '', issuerId);
+    newList.sign(
+        signer,
+        proof!.type == LdpProofType.ed25519Signature2020.value
+            ? LdpProofType.ed25519Signature2020
+            : LdpProofType.jsonWebSignature2020);
+    return newList;
   }
 
   bool isRevoked(int index) {
