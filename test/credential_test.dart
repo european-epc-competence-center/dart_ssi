@@ -28,7 +28,8 @@ void main() {
           credentialSubject: {'name': 'Mustermann'},
           issuanceDate: DateTime.now());
 
-      var signer = WalletCredentialSigner(wallet, issuer, 'EdDSA', issuer);
+      var signer = WalletCredentialSigner(
+          wallet, issuer, 'EdDSA', '$issuer#${issuer.split(':').last}');
       await credential.sign(signer, LdpProofType.ed25519Signature2020);
 
       expect(credential.context.contains(ed25519ContextIri), true);
@@ -47,7 +48,8 @@ void main() {
           issuer: issuer,
           credentialSubject: {'name': 'Mustermann'},
           issuanceDate: DateTime.now());
-      var signer = WalletCredentialSigner(wallet, issuer, 'ES256', issuer);
+      var signer = WalletCredentialSigner(
+          wallet, issuer, 'ES256', '$issuer#${issuer.split(':').last}');
       await credential.sign(signer, LdpProofType.jsonWebSignature2020);
 
       expect(credential.context.contains(jsonWebSignature2020ContextIri), true);
@@ -66,7 +68,8 @@ void main() {
           issuer: issuer,
           credentialSubject: {'name': 'Mustermann'},
           issuanceDate: DateTime.now());
-      var signer = WalletCredentialSigner(wallet, issuer, 'ES256', issuer);
+      var signer = WalletCredentialSigner(
+          wallet, issuer, 'ES256', '$issuer#${issuer.split(':').last}');
       await credential.sign(signer, LdpProofType.jsonWebSignature2020);
 
       expect(credential.context.contains(jsonWebSignature2020ContextIri), true);
@@ -85,7 +88,8 @@ void main() {
           issuer: issuer,
           credentialSubject: {'name': 'Mustermann'},
           issuanceDate: DateTime.now());
-      var signer = WalletCredentialSigner(wallet, issuer, 'ES384', issuer);
+      var signer = WalletCredentialSigner(
+          wallet, issuer, 'ES384', '$issuer#${issuer.split(':').last}');
       await credential.sign(signer, LdpProofType.jsonWebSignature2020);
 
       expect(credential.context.contains(jsonWebSignature2020ContextIri), true);
@@ -107,7 +111,8 @@ void main() {
           issuer: issuer,
           credentialSubject: {'name': 'Mustermann'},
           issuanceDate: DateTime.now());
-      var signer = WalletCredentialSigner(wallet, issuer, 'ES512', issuer);
+      var signer = WalletCredentialSigner(
+          wallet, issuer, 'ES512', '$issuer#${issuer.split(':').last}');
       await credential.sign(signer, LdpProofType.jsonWebSignature2020);
 
       expect(credential.context.contains(jsonWebSignature2020ContextIri), true);

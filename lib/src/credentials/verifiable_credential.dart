@@ -5,8 +5,10 @@ import 'dart:typed_data';
 import 'package:base_codecs/base_codecs.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dart_ssi/did.dart';
+import 'package:dart_ssi/oid.dart';
 import 'package:dart_ssi/src/credentials/jsonLdContext/json_web_signature_2020_context.dart';
 import 'package:json_ld_processor/json_ld_processor.dart';
+import 'package:json_path/json_path.dart';
 import 'package:sd_jwt/sd_jwt.dart';
 
 import '../../credentials.dart';
@@ -24,6 +26,7 @@ class VerifiableCredential extends JsonObject {
   DateTime? expirationDate;
   CredentialStatus? status;
   CredentialStatus? credentialSchema;
+  String? _issuanceDateString, _expirationDateString;
 
   VerifiableCredential(
       {required this.context,
@@ -89,6 +92,7 @@ class VerifiableCredential extends JsonObject {
     }
 
     if (credential.containsKey('issuanceDate')) {
+      _issuanceDateString = credential['issuanceDate'];
       issuanceDate = DateTime.parse(credential['issuanceDate']);
     } else {
       throw FormatException(
@@ -98,6 +102,7 @@ class VerifiableCredential extends JsonObject {
     id = credential['id'];
 
     if (credential.containsKey('expirationDate')) {
+      _expirationDateString = credential['expirationDate'];
       expirationDate = DateTime.parse(credential['expirationDate']);
     }
 
@@ -117,21 +122,8 @@ class VerifiableCredential extends JsonObject {
 
   @override
   Map<String, dynamic> toJson() {
-    Map<String, dynamic> jsonObject = {};
-    jsonObject['@context'] = context;
-    if (id != null) jsonObject['id'] = id;
-    jsonObject['type'] = type;
-    jsonObject['credentialSubject'] = credentialSubject;
-    jsonObject['issuer'] = issuer;
-    jsonObject['issuanceDate'] = issuanceDate.toUtc().toIso8601String();
-    if (expirationDate != null) {
-      jsonObject['expirationDate'] = expirationDate!.toUtc().toIso8601String();
-    }
+    Map<String, dynamic> jsonObject = _serializeWithoutProof();
     if (proof != null) jsonObject['proof'] = proof!.toJson();
-    if (status != null) jsonObject['credentialStatus'] = status!.toJson();
-    if (credentialSchema != null) {
-      jsonObject['credentialSchema'] = credentialSchema!.toJson();
-    }
 
     return jsonObject;
   }
@@ -169,9 +161,10 @@ class VerifiableCredential extends JsonObject {
     jsonObject['type'] = type;
     jsonObject['credentialSubject'] = credentialSubject;
     jsonObject['issuer'] = issuer;
-    jsonObject['issuanceDate'] = issuanceDate.toUtc().toIso8601String();
+    jsonObject['issuanceDate'] = _issuanceDateString ?? toXmlDate(issuanceDate);
     if (expirationDate != null) {
-      jsonObject['expirationDate'] = expirationDate!.toUtc().toIso8601String();
+      jsonObject['expirationDate'] =
+          _expirationDateString ?? toXmlDate(expirationDate!);
     }
     if (status != null) jsonObject['credentialStatus'] = status!.toJson();
     if (credentialSchema != null) {
@@ -265,18 +258,26 @@ class VerifiableCredential extends JsonObject {
       throw Exception('No proof to verify');
     }
 
-    var proofOptions = LinkedDataProof(
-        challenge: proof!.challenge,
-        domain: proof!.domain,
-        type: proof!.type,
-        proofPurpose: proof!.proofPurpose,
-        verificationMethod: proof!.verificationMethod,
-        created: proof!.created,
-        context: proof!.context != null && proof!.context!.isNotEmpty
-            ? proof!.context
-            : (proof!.type == LdpProofType.ed25519Signature2020.value
-                ? [ed25519ContextIri]
-                : [jsonWebSignature2020ContextIri]));
+    var proofOptions = LinkedDataProof.fromJson(proof!.toJson());
+    proofOptions.proofValue = null;
+    proofOptions.jws = null;
+    proofOptions.context = proof!.context != null && proof!.context!.isNotEmpty
+        ? proof!.context
+        : (proof!.type == LdpProofType.ed25519Signature2020.value
+            ? [ed25519ContextIri]
+            : [jsonWebSignature2020ContextIri]);
+    // LinkedDataProof(
+    //     challenge: proof!.challenge,
+    //     domain: proof!.domain,
+    //     type: proof!.type,
+    //     proofPurpose: proof!.proofPurpose,
+    //     verificationMethod: proof!.verificationMethod,
+    //     created: proof!.createdString,
+    //     context: proof!.context != null && proof!.context!.isNotEmpty
+    //         ? proof!.context
+    //         : (proof!.type == LdpProofType.ed25519Signature2020.value
+    //             ? [ed25519ContextIri]
+    //             : [jsonWebSignature2020ContextIri]));
 
     var signingInput = await _generateSigningInput(proofOptions, loadDocument);
     Uint8List signature;
@@ -307,8 +308,18 @@ class VerifiableCredential extends JsonObject {
     var did = proofOptions.verificationMethod.split('#').first;
     var ddo = await resolveDidDocument(did);
     ddo = ddo.resolveKeyIds().convertAllKeysToJwk();
-    var jwk = Jwk.fromJson(ddo.verificationMethod!.first.publicKeyJwk!);
+    Jwk? jwk;
+    for (var k in ddo.verificationMethod ?? <VerificationMethod>[]) {
+      if (k.id == proofOptions.verificationMethod) {
+        jwk = Jwk.fromJson(k.publicKeyJwk!);
+        break;
+      }
+    }
+    if (jwk == null) {
+      throw Exception('Cannot find public key');
+    }
 
+    print(signingInput);
     var verifier = JwkCredentialSigner(jwk);
     return verifier.verify(Uint8List.fromList(signingInput), signature);
   }
@@ -335,6 +346,7 @@ class LinkedDataProof extends JsonObject {
   String? challenge;
   String? jws;
   String? domain;
+  String? _createdString;
 
   LinkedDataProof(
       {required this.type,
@@ -368,6 +380,7 @@ class LinkedDataProof extends JsonObject {
     }
 
     if (proof.containsKey('created')) {
+      _createdString = proof['created'];
       created = DateTime.parse(proof['created']);
     } else {
       throw FormatException('created is needed in proof object');
@@ -383,6 +396,8 @@ class LinkedDataProof extends JsonObject {
     challenge = proof['challenge'];
   }
 
+  String get createdString => _createdString ?? toXmlDate(created);
+
   @override
   Map<String, dynamic> toJson() {
     Map<String, dynamic> jsonObject = {};
@@ -392,7 +407,8 @@ class LinkedDataProof extends JsonObject {
     jsonObject['type'] = type;
     jsonObject['proofPurpose'] = proofPurpose;
     jsonObject['verificationMethod'] = verificationMethod;
-    jsonObject['created'] = created.toIso8601String();
+
+    jsonObject['created'] = _createdString ?? toXmlDate(created);
 
     if (domain != null) jsonObject['domain'] = domain;
     if (challenge != null) jsonObject['challenge'] = challenge;
@@ -527,6 +543,37 @@ class VerifiablePresentation extends JsonObject {
     }
   }
 
+  factory VerifiablePresentation.fromFilterResults(
+      List<FilterResult> filterResults) {
+    List<InputDescriptorMappingObject> mapping = [];
+    List<VerifiableCredential> vc = [];
+
+    int index = 0;
+    for (var result in filterResults) {
+      if (result.credentials != null) {
+        vc.addAll(result.credentials!);
+        for (var _ in result.credentials!) {
+          for (var descriptorId in result.matchingDescriptorIds) {
+            mapping.add(InputDescriptorMappingObject(
+                id: descriptorId,
+                format: OidCredentialFormat.ldpVc,
+                path: JsonPath('\$.verifiableCredential[$index]')));
+          }
+          index++;
+        }
+      } else {
+        continue;
+      }
+    }
+
+    return VerifiablePresentation(
+        verifiableCredential: vc,
+        presentationSubmission: PresentationSubmission(
+            presentationDefinitionId:
+                filterResults.first.presentationDefinitionId,
+            descriptorMap: mapping));
+  }
+
   Future<List<int>> _hashData(
       Function(Uri url, LoadDocumentOptions? options) loadDocument) async {
     var normalizedData = await JsonLdProcessor.normalize(
@@ -550,6 +597,7 @@ class VerifiablePresentation extends JsonObject {
 
   FutureOr<void> addProof(CredentialSigner signer, LdpProofType proofType,
       {String? challenge,
+      String? domain,
       String proofPurpose = 'authentication',
       Function(Uri url, LoadDocumentOptions? options) loadDocument =
           loadDocumentStrict}) async {
@@ -565,6 +613,7 @@ class VerifiablePresentation extends JsonObject {
     var proofOptions = LinkedDataProof(
         type: proofType.value,
         proofPurpose: proofPurpose,
+        domain: domain,
         verificationMethod: signer.verificationMethod,
         created: DateTime.now(),
         challenge: challenge,
@@ -617,18 +666,14 @@ class VerifiablePresentation extends JsonObject {
     var dataHash = await _hashData(loadDocument);
 
     for (var p in proof!) {
-      var proofOptions = LinkedDataProof(
-          challenge: p.challenge,
-          domain: p.domain,
-          type: p.type,
-          proofPurpose: p.proofPurpose,
-          verificationMethod: p.verificationMethod,
-          created: p.created,
-          context: p.context != null && p.context!.isNotEmpty
-              ? p.context
-              : (p.type == LdpProofType.ed25519Signature2020.value
-                  ? [ed25519ContextIri]
-                  : [jsonWebSignature2020ContextIri]));
+      var proofOptions = LinkedDataProof.fromJson(p.toJson());
+      proofOptions.proofValue = null;
+      proofOptions.jws = null;
+      proofOptions.context = p.context != null && p.context!.isNotEmpty
+          ? p.context
+          : (p.type == LdpProofType.ed25519Signature2020.value
+              ? [ed25519ContextIri]
+              : [jsonWebSignature2020ContextIri]);
 
       var signingInput =
           (await _hashProofOptions(proofOptions, loadDocument)) + dataHash;

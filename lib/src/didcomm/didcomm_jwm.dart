@@ -452,9 +452,10 @@ class AttachmentData extends JsonObject {
     sd_jwt.CryptoProvider provider;
     if (jwk.keyType == sd_jwt.KeyType.okp) {
       provider =
-          sd_jwt.Ed25519EdwardsCryptoProvider(jwk as sd_jwt.AsymmetricKey);
+          sd_jwt.Ed25519EdwardsCryptoProvider(jwk.key as sd_jwt.AsymmetricKey);
     } else {
-      provider = sd_jwt.PointyCastleCryptoProvider(jwk as sd_jwt.AsymmetricKey);
+      provider =
+          sd_jwt.PointyCastleCryptoProvider(jwk.key as sd_jwt.AsymmetricKey);
     }
     return jwsCasted.verify(provider);
   }

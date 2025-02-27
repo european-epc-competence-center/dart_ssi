@@ -419,6 +419,13 @@ String getDateTimeNowString() {
   return xmlDate;
 }
 
+String toXmlDate(DateTime date) {
+  var asString = date.toUtc().toIso8601String();
+  var xmlDate = asString.split('.').first;
+  xmlDate += 'Z';
+  return xmlDate;
+}
+
 Future<List<int>> _calculateZ(KeyAgreementGenerator keyAgreement,
     Map<String, dynamic> otherPublicKey) async {
   return keyAgreement.generateAgreement(otherPublicKey);

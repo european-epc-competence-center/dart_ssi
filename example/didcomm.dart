@@ -20,7 +20,6 @@ import 'dart:convert';
 import 'package:dart_ssi/credentials.dart';
 import 'package:dart_ssi/did.dart';
 import 'package:dart_ssi/didcomm.dart';
-import 'package:dart_ssi/oid.dart';
 import 'package:dart_ssi/util.dart';
 import 'package:dart_ssi/wallet.dart';
 import 'package:json_path/json_path.dart';
@@ -101,21 +100,12 @@ void main() async {
       credentials: allW3CCreds);
 
   //Alice realize, that she should show her Student card and build verifiable Presentation out of it
-  var presentation = VerifiablePresentation(
-      verifiableCredential: searchResult.first.credentials,
-      presentationSubmission: PresentationSubmission(
-          descriptorMap: [
-            InputDescriptorMappingObject(
-                id: searchResult.first.matchingDescriptorIds.first,
-                format: OidCredentialFormat.ldpVc,
-                path: JsonPath(r'$.verifiableCredential[0]'))
-          ],
-          presentationDefinitionId:
-              searchResult.first.presentationDefinitionId));
+  var presentation = VerifiablePresentation.fromFilterResults(searchResult);
   for (var c in presentation.verifiableCredential!) {
+    var did = c.credentialSubject['id'] as String;
     await presentation.addProof(
-        WalletCredentialSigner(alice, c.credentialSubject['id'], 'EdDSA',
-            c.credentialSubject['id']),
+        WalletCredentialSigner(
+            alice, did, 'EdDSA', '$did#${did.split(':').last}'),
         LdpProofType.ed25519Signature2020,
         challenge: request.presentationDefinition[0].challenge);
   }
@@ -253,8 +243,8 @@ void main() async {
 
   //**** Museum ****
   //Takes credential from Request, checks if everything is fine and signs it
-  var museumCredentialSigner = WalletCredentialSigner(
-      museum, museumIssuerDid!, 'EdDSA', museumIssuerDid);
+  var museumCredentialSigner = WalletCredentialSigner(museum, museumIssuerDid!,
+      'EdDSA', '$museumIssuerDid#${museumIssuerDid.split(':').last}');
   var credential = requestCredential.detail![0].credential;
   await credential.sign(
       museumCredentialSigner, LdpProofType.ed25519Signature2020,
