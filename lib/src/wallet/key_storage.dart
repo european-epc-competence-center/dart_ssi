@@ -405,7 +405,7 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
 
   @override
   FutureOr<bool> hasKey(String keyId) {
-    return _keyBox?.get(keyId) != null;
+    return _keyBox?.get(keyId) != null && _keyBox?.get(keyId).isNotEmpty;
   }
 
   @override

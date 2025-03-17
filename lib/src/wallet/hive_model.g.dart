@@ -19,7 +19,8 @@ class CredentialAdapter extends TypeAdapter<Credential> {
     return Credential(
       fields[1] as String,
       fields[2] as String,
-    )..hdPath = fields[0] as String;
+      fields[0] as String,
+    );
   }
 
   @override

@@ -765,6 +765,7 @@ class KeyAttestationDetails extends JsonObject {
 }
 
 class ProofTypesSupportedDetails extends JsonObject {
+  /// alg values might be strings (jwt/ldp_vp) or ints (cwt).
   List<dynamic> signingAlgValuesSupported;
   KeyAttestationDetails? keyAttestationRequired;
 
@@ -804,21 +805,31 @@ class ProofTypesSupportedDetails extends JsonObject {
 }
 
 class CredentialsSupportedObject extends JsonObject {
-  late String format;
+  String format;
   String? scope;
   List<String>? cryptographicBindingMethods,
-      //in draft 11 and 12 called cryptographic_suites_supported
+
+      /// in draft 11 and 12 called cryptographic_suites_supported
       credentialSigningAlgValues,
       order;
-  // in draft 12 this is only a list of the proof types,
-  // therefor the List of supported algs is always empty
-  // alg values migth be strings (jwt/ldp_vp) or ints (cwt)
+
+  /// in draft 12 this is only a list of the proof types,
+  /// therefor the List of supported algs in ProofTypesSupportedObject is always empty
   Map<String, ProofTypesSupportedDetails>? proofTypesSupported;
   List<OidDisplayObject>? display;
-  // credential specific
+
+  /// credential specific, used in draft 11-14
   Map<String, dynamic>? claims;
+
+  /// The Object behind 'claims' since draft 15
+  ///
+  /// It got its own entry here, because changes were too substantial
   List<ClaimsDescriptionObject>? claimDescriptions;
+
+  /// For mso_mdoc and dc+sd-jwt only the first entry is used
   List<String>? credentialType;
+
+  /// only used for ldp_vc, jwt_vc_json-ld and jwt_vc_json
   List<String>? context;
   String? credentialId;
 

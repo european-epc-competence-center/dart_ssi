@@ -319,7 +319,6 @@ class VerifiableCredential extends JsonObject {
       throw Exception('Cannot find public key');
     }
 
-    print(signingInput);
     var verifier = JwkCredentialSigner(jwk);
     return verifier.verify(Uint8List.fromList(signingInput), signature);
   }

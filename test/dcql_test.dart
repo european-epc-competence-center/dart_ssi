@@ -58,6 +58,26 @@ void main() {
     });
   });
 
+  group('pointer.setValueForPath', () {
+    test('set string in empty object', () {
+      var object = <String, dynamic>{};
+      var path = ClaimPathPointer(['data']);
+      path.setValueAtPath('value', object);
+      print(object);
+      expect(object.length, 1);
+      expect(object['data'], 'value');
+    });
+
+    test('set string in deeper in object', () {
+      var object = <String, dynamic>{'p1': 'p'};
+      var path = ClaimPathPointer(['data', 'p2']);
+      path.setValueAtPath('value', object);
+      print(object);
+      expect(object.length, 2);
+      expect(object['data']['p2'], 'value');
+    });
+  });
+
   group('simple filtering via format and type', () {
     test('presentationDefinition, ldp_vc', () {
       var definition = {

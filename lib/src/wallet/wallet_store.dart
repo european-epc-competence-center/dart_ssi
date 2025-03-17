@@ -168,9 +168,19 @@ class WalletStore {
 // - issuerDid und issuerDidEd umbenannt zu issuer$keyType
 // - new KeyBox shall store did: HD path
   void _update() {
+    var softwareKeyStore = _keyStorage?['software'];
+    var hasUpdate2 = _configBox!.get('update2');
+    if (hasUpdate2 == null) {
+      var creds = getAllCredentials();
+      var toImport = creds.map((k, v) => MapEntry(k, v.hdPath));
+
+      if (softwareKeyStore != null) {
+        softwareKeyStore.import(toImport);
+      }
+      _configBox!.put('update2', 'yes');
+    }
     var hasUpdate = _configBox!.get('update');
     if (hasUpdate != null) return;
-    var softwareKeyStore = _keyStorage?['software'];
     if (softwareKeyStore != null) {
       var keyData = softwareKeyStore.export() as Map;
       var issuerDid = keyData['issuerDid'];
@@ -215,7 +225,6 @@ class WalletStore {
           data['keystore_${entry.key}'] = {'data': export};
         }
       } catch (e) {
-        print(e);
         data['keystore_${entry.key}'] = {'warning': 'Not exportable'};
       }
     }
@@ -331,7 +340,7 @@ class WalletStore {
   /// - optional [metadata]
   Future<void> storeCredential(String verifiableCredential, String credentialId,
       [String? metadata]) async {
-    var tmp = Credential(verifiableCredential, metadata ?? '');
+    var tmp = Credential(verifiableCredential, metadata ?? '', '');
     await _credentialBox!.put(credentialId, tmp);
   }
 
@@ -441,7 +450,7 @@ class WalletStore {
   /// Stores a credential issued to [holderDid].
   void toIssuingHistory(String holderDid, String verifiableCredential,
       [String? metadata]) {
-    var tmp = Credential(verifiableCredential, metadata ?? '');
+    var tmp = Credential(verifiableCredential, metadata ?? '', '');
     _issuingHistory!.put(holderDid, tmp);
   }
 

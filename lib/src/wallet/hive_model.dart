@@ -19,14 +19,12 @@ class Credential {
   @HiveField(2)
   String metadata;
 
-  Credential(this.verifiableCredential, this.metadata) : hdPath = '';
+  Credential(this.verifiableCredential, this.metadata, this.hdPath);
 
   /// Create a Credential object from a JSON map
   factory Credential.fromJson(Map<String, dynamic> json) {
-    return Credential(
-      json['verifiableCredential'] as String,
-      json['metadata'] as String,
-    );
+    return Credential(json['verifiableCredential'] as String,
+        json['metadata'] as String, json['hdPath'] ?? '');
   }
 
   /// Convert a Credential object to a JSON-encodable Map
@@ -34,6 +32,7 @@ class Credential {
     return {
       'verifiableCredential': verifiableCredential,
       'metadata': metadata,
+      'hdPath': hdPath
     };
   }
 

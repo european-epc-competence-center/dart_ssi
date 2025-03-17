@@ -33,10 +33,6 @@ dependencies:
       url: https://github.com/b2cm/sd_jwt
       ref: development
 
-dependency_overrides:
-  # pinenacl: 0.6.0
-
-
 dev_dependencies:
   test: ^1.21.6
   test_process: ^2.0.3

@@ -65,6 +65,24 @@ class ClaimPathPointer {
     }
   }
 
+  /// Sets [value] in [json] at the path of this PathPointer.
+  ///
+  /// Array stuff is not supported
+  void setValueAtPath(dynamic value, Map<String, dynamic> json) {
+    dynamic data = json;
+    for (int i = 0; i < pointer.length; i++) {
+      var p = pointer[i];
+      if (!data.containsKey(p)) {
+        data[p] = {};
+      }
+      if (i == pointer.length - 1) {
+        data[p] = value;
+        return;
+      }
+      data = data[p];
+    }
+  }
+
   List<dynamic> toJson() {
     return pointer;
   }
