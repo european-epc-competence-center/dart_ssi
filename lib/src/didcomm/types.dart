@@ -1,17 +1,16 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
-import 'package:crypto_keys/crypto_keys.dart';
 import 'package:dart_ssi/didcomm.dart';
-import 'package:dart_ssi/src/util/crypto_provider.dart';
-import 'package:dart_ssi/src/util/types.dart';
-import 'package:dart_ssi/src/wallet/wallet_store.dart';
-import 'package:elliptic/elliptic.dart' as elliptic;
-import 'package:web3dart/crypto.dart';
+import 'package:pointycastle/export.dart' as pc;
+import 'package:sd_jwt/sd_jwt.dart' as sd_jwt;
 import 'package:x25519/x25519.dart' as x25519;
 
+import '../util/crypto_provider.dart';
+import '../util/private_util.dart';
+import '../util/types.dart';
 import '../util/utils.dart';
+import '../wallet/wallet_store.dart';
 
 enum DidcommProfiles {
   aip1,
@@ -101,8 +100,9 @@ class DidcommMessage extends JsonObject {
       throw Exception('Cant find keys with matching crv parameter');
     }
     keyIdString = keyIdString.substring(0, keyIdString.length - 1);
+    var hash = pc.SHA256Digest();
     var apv = removePaddingFromBase64(
-        base64UrlEncode(sha256.convert(utf8.encode(keyIdString)).bytes));
+        base64UrlEncode(hash.process(utf8.encode(keyIdString))));
     jweHeader['apv'] = apv;
 
     //1) Resolve dids to get public keys
@@ -114,79 +114,92 @@ class DidcommMessage extends JsonObject {
 
     //2) look for Key-Type and generate Ephermal Key
 
-    elliptic.Curve? c;
-    Object epkPrivate;
-    List<int> epkPublic = [];
+    sd_jwt.Curve c;
+    Map<String, dynamic> epkPrivateJwk, epkPublicJwk;
     if (curve.startsWith('P') || curve.startsWith('secp256k1')) {
       if (curve == 'P-256') {
-        c = elliptic.getP256();
+        c = sd_jwt.Curve.p256;
       } else if (curve == 'P-384') {
-        c = elliptic.getP384();
+        c = sd_jwt.Curve.p384;
       } else if (curve == 'P-521') {
-        c = elliptic.getP521();
+        c = sd_jwt.Curve.p521;
       } else if (curve == 'secp256k1') {
-        c = elliptic.getSecp256k1();
+        c = sd_jwt.Curve.p256k;
       } else {
         throw UnimplementedError();
       }
 
-      epkPrivate = c.generatePrivateKey();
+      var epkPrivate = sd_jwt.Jwk(
+          keyType: sd_jwt.KeyType.ec, key: sd_jwt.EcPrivateKey.generate(c));
+      epkPrivateJwk = epkPrivate.toJson();
+      epkPublicJwk = epkPrivate.public.toJson();
     } else if (curve.startsWith('X')) {
       var eKeyPair = x25519.generateKeyPair();
-      epkPrivate = eKeyPair.privateKey;
-      epkPublic = eKeyPair.publicKey;
-    } else {
-      throw UnimplementedError();
-    }
-
-    Map<String, dynamic> epkJwk = {'kty': keyType, 'crv': curve};
-    if (epkPrivate is elliptic.PrivateKey) {
-      epkJwk['x'] = removePaddingFromBase64(
-          base64UrlEncode(intToBytes(epkPrivate.publicKey.X)));
-      epkJwk['y'] = removePaddingFromBase64(
-          base64UrlEncode(intToBytes(epkPrivate.publicKey.Y)));
-    } else if (epkPrivate is List<int>) {
-      epkJwk['x'] = removePaddingFromBase64(base64UrlEncode(epkPublic));
-    } else {
-      throw Exception('Unknown Key type');
-    }
-    jweHeader['epk'] = epkJwk;
-
-    Map<String, dynamic> epkPrivateJwk = Map.from(epkJwk);
-    if (epkPrivate is elliptic.PrivateKey) {
-      epkPrivateJwk['d'] =
-          removePaddingFromBase64(base64UrlEncode(epkPrivate.bytes));
-    } else if (epkPrivate is List<int>) {
+      var epkPrivate = eKeyPair.privateKey;
+      var epkPublic = eKeyPair.publicKey;
+      epkPublicJwk = {
+        'kty': 'OKP',
+        'crv': 'X25519',
+        'x': removePaddingFromBase64(base64UrlEncode(epkPublic))
+      };
+      epkPrivateJwk = Map.from(epkPublicJwk);
       epkPrivateJwk['d'] = removePaddingFromBase64(base64UrlEncode(epkPrivate));
     } else {
-      throw Exception('Unknown Key type');
+      throw UnimplementedError();
     }
 
+    jweHeader['epk'] = epkPublicJwk;
+
     //3) generate symmetric CEK
-    SymmetricKey cek;
+    Uint8List cek;
     if (encryptionAlgorithm == EncryptionAlgorithm.a256cbc) {
-      cek = SymmetricKey.generate(512);
+      cek = getSecureRandom().nextBytes(64);
     } else {
-      cek = SymmetricKey.generate(256);
-    }
-    Encrypter e;
-    if (encryptionAlgorithm == EncryptionAlgorithm.a256cbc) {
-      e = cek.createEncrypter(algorithms.encryption.aes.cbcWithHmac.sha512);
-    } else if (encryptionAlgorithm == EncryptionAlgorithm.a256gcm) {
-      e = cek.createEncrypter(algorithms.encryption.aes.gcm);
-    } else {
-      throw UnimplementedError();
+      cek = getSecureRandom().nextBytes(32);
     }
 
     //4) Generate IV
+    var iv = getSecureRandom().nextBytes(16);
 
     //5) build aad ( ASCII(BASE64URL(UTF8(JWE Protected Header))) )
     var aad = ascii.encode(removePaddingFromBase64(
         base64UrlEncode(utf8.encode(jsonEncode(jweHeader)))));
+
     //6) encrypt and get tag
-    var encrypted = e.encrypt(
-        Uint8List.fromList(utf8.encode(plaintext.toString())),
-        additionalAuthenticatedData: aad);
+    Uint8List encrypted;
+    Uint8List tag;
+    if (encryptionAlgorithm == EncryptionAlgorithm.a256cbc) {
+      var algorithm = pc.PaddedBlockCipher('AES/CBC/PKCS7');
+      algorithm.init(
+          true,
+          pc.PaddedBlockCipherParameters(
+              pc.ParametersWithIV(pc.KeyParameter(cek.sublist(32)), iv), null));
+      encrypted = algorithm
+          .process(Uint8List.fromList(utf8.encode(plaintext.toString())));
+      var mac = pc.HMac(pc.SHA512Digest(), 128);
+      var al = aad.length * 8;
+      var alHex = al.toRadixString(16).padLeft(16, '0');
+      mac.init(pc.KeyParameter(cek.sublist(0, 32)));
+      var computedMac = mac.process(
+          Uint8List.fromList(aad + iv + encrypted + hexToBytes(alHex)));
+      tag = computedMac.sublist(0, 32);
+    } else if (encryptionAlgorithm == EncryptionAlgorithm.a256gcm) {
+      var algorithm = pc.GCMBlockCipher(pc.AESEngine());
+      algorithm.init(
+          true,
+          pc.AEADParameters(
+            pc.KeyParameter(cek),
+            128,
+            iv,
+            aad,
+          ));
+      var data = algorithm
+          .process(Uint8List.fromList(utf8.encode(plaintext.toString())));
+      encrypted = data.sublist(0, data.length - 16);
+      tag = data.sublist(data.length - 16);
+    } else {
+      throw UnimplementedError();
+    }
 
     // 7) Encrypt cek for all recipients
     KeyAgreementGenerator? senderKeyAgreement;
@@ -203,12 +216,9 @@ class DidcommMessage extends JsonObject {
         r['header'] = {'kid': key['kid']};
         var encryptedCek = await _encryptSymmetricKey(
             cek, keyWrapAlgorithm.value, curve, key, epkPrivateJwk, apv,
-            c: c,
-            senderKeyAgreement: senderKeyAgreement,
-            kid: kid,
-            tag: encrypted.authenticationTag);
+            senderKeyAgreement: senderKeyAgreement, kid: kid, tag: tag);
         r['encrypted_key'] =
-            removePaddingFromBase64(base64UrlEncode(encryptedCek.data));
+            removePaddingFromBase64(base64UrlEncode(encryptedCek));
         recipients.add(r);
       }
     }
@@ -216,25 +226,23 @@ class DidcommMessage extends JsonObject {
     //9) put everything together
     return DidcommEncryptedMessage(
         protectedHeader: ascii.decode(aad),
-        tag: removePaddingFromBase64(
-            base64UrlEncode(encrypted.authenticationTag!)),
-        iv: removePaddingFromBase64(
-            base64UrlEncode(encrypted.initializationVector!)),
-        ciphertext: removePaddingFromBase64(base64UrlEncode(encrypted.data)),
+        tag: removePaddingFromBase64(base64UrlEncode(tag)),
+        iv: removePaddingFromBase64(base64UrlEncode(iv)),
+        ciphertext: removePaddingFromBase64(base64UrlEncode(encrypted)),
         recipients: recipients);
   }
 
-  Future<EncryptionResult> _encryptSymmetricKey(
-      SymmetricKey symmetricKey,
-      String keyWrapAlgorithm,
-      String curve,
-      Map<String, dynamic> publicKeyJwk,
-      dynamic epkPrivate,
-      String apv,
-      {KeyAgreementGenerator? senderKeyAgreement,
-      String? kid,
-      List<int>? tag,
-      elliptic.Curve? c}) async {
+  Future<Uint8List> _encryptSymmetricKey(
+    Uint8List symmetricKey,
+    String keyWrapAlgorithm,
+    String curve,
+    Map<String, dynamic> publicKeyJwk,
+    dynamic epkPrivate,
+    String apv, {
+    KeyAgreementGenerator? senderKeyAgreement,
+    String? kid,
+    List<int>? tag,
+  }) async {
     //7) do ecdh to get shared Secret
     List<int> sharedSecret;
     var keyAgreement = JwkKeyAgreementGenerator(epkPrivate);
@@ -260,16 +268,11 @@ class DidcommMessage extends JsonObject {
       throw UnimplementedError();
     }
 
-    Map<String, dynamic> sharedSecretJwk = {
-      'kty': 'oct',
-      'k': base64UrlEncode(sharedSecret)
-    };
-
     //8) Encrypt CEK with Key Wrap algo
-    var keyWrapKey = KeyPair.fromJwk(sharedSecretJwk);
-    Encrypter kw = keyWrapKey.publicKey!
-        .createEncrypter(algorithms.encryption.aes.keyWrap);
-    return kw.encrypt(symmetricKey.keyValue);
+    var keyWrapper = AESKeyWrap();
+    keyWrapper.init(true, pc.KeyParameter(Uint8List.fromList(sharedSecret)));
+    var encryptedCek = keyWrapper.process(symmetricKey);
+    return encryptedCek;
   }
 
   @override

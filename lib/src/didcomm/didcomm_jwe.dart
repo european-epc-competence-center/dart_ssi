@@ -1,12 +1,14 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
-import 'package:crypto_keys/crypto_keys.dart';
 import 'package:dart_ssi/did.dart';
-import 'package:dart_ssi/src/util/crypto_provider.dart';
-import 'package:dart_ssi/src/wallet/wallet_store.dart';
 import 'package:json_schema/json_schema.dart';
+import 'package:pointycastle/export.dart' as pc;
 
+import '../util/crypto_provider.dart';
+import '../util/private_util.dart';
 import '../util/utils.dart';
+import '../wallet/wallet_store.dart';
 import 'didcomm_jwm.dart';
 import 'didcomm_jws.dart';
 import 'types.dart';
@@ -164,34 +166,56 @@ class DidcommEncryptedMessage extends DidcommMessage {
       }
     }
 
-    Map<String, dynamic> sharedSecretJwk = {
-      'kty': 'oct',
-      'k': base64UrlEncode(sharedSecret)
-    };
+    var keyWrapper = AESKeyWrap();
+    keyWrapper.init(false, pc.KeyParameter(Uint8List.fromList(sharedSecret)));
+    var decryptedCek =
+        keyWrapper.process(base64Decode(addPaddingToBase64(encryptedCek)));
 
-    var keyWrapKey = KeyPair.fromJwk(sharedSecretJwk);
-    Encrypter kw = keyWrapKey.publicKey!
-        .createEncrypter(algorithms.encryption.aes.keyWrap);
-    var decryptedCek = kw.decrypt(
-        EncryptionResult(base64Decode(addPaddingToBase64(encryptedCek))));
-    var cek = SymmetricKey(keyValue: decryptedCek);
     //4) Decrypt Body
-    Encrypter e;
+
+    Uint8List plain;
     if (protectedHeaderEnc! == 'A256CBC-HS512') {
-      e = cek.createEncrypter(algorithms.encryption.aes.cbcWithHmac.sha512);
+      var mac = pc.HMac(pc.SHA512Digest(), 128);
+      var al = ascii.encode(protectedHeader).length * 8;
+      var alHex = al.toRadixString(16).padLeft(16, '0');
+      mac.init(pc.KeyParameter(decryptedCek.sublist(0, 32)));
+      var computedMac = mac.process(Uint8List.fromList(
+          ascii.encode(protectedHeader) +
+              base64Decode(addPaddingToBase64(iv)) +
+              base64Decode(addPaddingToBase64(ciphertext)) +
+              hexToBytes(alHex)));
+
+      if (!listEquals(
+          computedMac.sublist(0, 32), base64Decode(addPaddingToBase64(tag)))) {
+        throw Exception('Invalid tag');
+      }
+
+      var algorithm = pc.PaddedBlockCipher('AES/CBC/PKCS7');
+      algorithm.init(
+          false,
+          pc.PaddedBlockCipherParameters(
+              pc.ParametersWithIV(pc.KeyParameter(decryptedCek.sublist(32)),
+                  base64Decode(addPaddingToBase64(iv))),
+              null));
+      plain = algorithm.process(
+          Uint8List.fromList(base64Decode(addPaddingToBase64(ciphertext))));
     } else if (protectedHeaderEnc == 'A256GCM') {
-      e = cek.createEncrypter(algorithms.encryption.aes.gcm);
+      var algorithm = pc.GCMBlockCipher(pc.AESEngine());
+      algorithm.init(
+          false,
+          pc.AEADParameters(
+            pc.KeyParameter(decryptedCek),
+            128,
+            base64Decode(addPaddingToBase64(iv)),
+            ascii.encode(protectedHeader),
+          ));
+      plain = algorithm.process(Uint8List.fromList(
+          base64Decode(addPaddingToBase64(ciphertext)) +
+              base64Decode(addPaddingToBase64(tag))));
     } else {
       throw UnimplementedError();
     }
 
-    var toDecrypt = EncryptionResult(
-        base64Decode(addPaddingToBase64(ciphertext)),
-        authenticationTag: base64Decode(addPaddingToBase64(tag)),
-        additionalAuthenticatedData: ascii.encode(protectedHeader),
-        initializationVector: base64Decode(addPaddingToBase64(iv)));
-
-    var plain = e.decrypt(toDecrypt);
     //5)return body
     DidcommMessage m;
     Map message = jsonDecode(utf8.decode(plain));

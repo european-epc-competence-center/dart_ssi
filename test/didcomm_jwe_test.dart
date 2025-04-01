@@ -3,13 +3,51 @@ import 'dart:io';
 
 import 'package:dart_ssi/did.dart';
 import 'package:dart_ssi/didcomm.dart';
+import 'package:dart_ssi/src/util/private_util.dart';
 import 'package:dart_ssi/src/wallet/wallet_store.dart';
 import 'package:dart_ssi/util.dart';
-import 'package:elliptic/elliptic.dart' as elliptic;
+import 'package:pointycastle/export.dart' as pc;
 import 'package:test/expect.dart';
 import 'package:test/scaffolding.dart';
-import 'package:web3dart/crypto.dart';
 import 'package:x25519/x25519.dart' as x25519;
+
+(Map<String, dynamic> alice, Map<String, dynamic> bob) keyGen(
+    pc.ECDomainParameters c, String crv) {
+  var keyGenA = pc.ECKeyGenerator();
+  keyGenA.init(pc.ParametersWithRandom(
+      pc.ECKeyGeneratorParameters(c), getSecureRandom()));
+  var alice = keyGenA.generateKeyPair();
+
+  var keyGenB = pc.ECKeyGenerator();
+  keyGenB.init(pc.ParametersWithRandom(
+      pc.ECKeyGeneratorParameters(c), getSecureRandom()));
+  var bob = keyGenB.generateKeyPair();
+
+  var aliceJWK = {
+    'kid': 'did:example:alice',
+    'crv': crv,
+    'kty': 'EC',
+    'd': removePaddingFromBase64(base64UrlEncode(
+        unsignedIntToBytes((alice.privateKey as pc.ECPrivateKey).d!))),
+    'x': removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(
+        (alice.publicKey as pc.ECPublicKey).Q!.x!.toBigInteger()!))),
+    'y': removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(
+        (alice.publicKey as pc.ECPublicKey).Q!.y!.toBigInteger()!)))
+  };
+  var bobJWK = {
+    'kid': 'did:example:bob',
+    'crv': crv,
+    'kty': 'EC',
+    'd': removePaddingFromBase64(base64UrlEncode(
+        unsignedIntToBytes((bob.privateKey as pc.ECPrivateKey).d!))),
+    'x': removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(
+        (bob.publicKey as pc.ECPublicKey).Q!.x!.toBigInteger()!))),
+    'y': removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(
+        (bob.publicKey as pc.ECPublicKey).Q!.y!.toBigInteger()!)))
+  };
+
+  return (aliceJWK, bobJWK);
+}
 
 void main() async {
   var message = DidcommPlaintextMessage.fromJson({
@@ -25,32 +63,8 @@ void main() async {
 
   group('with fresh generated Keys', () {
     test('A256GCM with ECDH-ES P-256', () async {
-      var c = elliptic.getP256();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-256',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-256',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp256r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-256');
 
       var encrypted = await message.encrypt(
         keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
@@ -65,32 +79,8 @@ void main() async {
       expect(message.body, m2.body);
     });
     test('A256GCM with ECDH-ES P-384', () async {
-      var c = elliptic.getP384();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-384',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-384',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp384r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-384');
 
       var encrypted = await message.encrypt(
         keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
@@ -105,30 +95,8 @@ void main() async {
       expect(message.body, m2.body);
     });
     test('A256GCM with ECDH-ES P-521', () async {
-      var c = elliptic.getP521();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-521',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(base64UrlEncode(alice.bytes)),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-521',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(base64UrlEncode(bob.bytes)),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp521r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-521');
 
       var encrypted = await message.encrypt(
         keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
@@ -175,32 +143,8 @@ void main() async {
     });
 
     test('A256GCM with ECDH-1PU P-256', () async {
-      var c = elliptic.getP256();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-256',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-256',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp256r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-256');
 
       var encrypted = await message.encrypt(
         encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
@@ -215,32 +159,8 @@ void main() async {
       expect(message.body, m2.body);
     });
     test('A256GCM with ECDH-1PU P-384', () async {
-      var c = elliptic.getP384();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-384',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-384',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp384r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-384');
 
       var encrypted = await message.encrypt(
         encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
@@ -255,32 +175,8 @@ void main() async {
       expect(message.body, m2.body);
     });
     test('A256GCM with ECDH-1PU P-521', () async {
-      var c = elliptic.getP521();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-521',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-521',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp521r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-521');
 
       var encrypted = await message.encrypt(
         encryptionAlgorithm: EncryptionAlgorithm.a256gcm,
@@ -327,32 +223,8 @@ void main() async {
     });
 
     test('A256CBC-HS512 with ECDH-ES P-256', () async {
-      var c = elliptic.getP256();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-256',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-256',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp256r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-256');
 
       var encrypted = await message.encrypt(
         keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
@@ -366,32 +238,8 @@ void main() async {
       expect(message.body, m2.body);
     });
     test('A256CBC-HS512 with ECDH-ES P-384', () async {
-      var c = elliptic.getP384();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-384',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-384',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp384r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-384');
 
       var encrypted = await message.encrypt(
         keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
@@ -405,32 +253,8 @@ void main() async {
       expect(message.body, m2.body);
     });
     test('A256CBC-HS512 with ECDH-ES P-521', () async {
-      var c = elliptic.getP521();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-521',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-521',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp521r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-521');
 
       var encrypted = await message.encrypt(
         keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
@@ -475,32 +299,8 @@ void main() async {
     });
 
     test('A256CBC-HS512 with ECDH-1PU P-256', () async {
-      var c = elliptic.getP256();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-256',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-256',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp256r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-256');
 
       var encrypted = await message.encrypt(
         senderPrivateKeyJwk: aliceJWK,
@@ -514,32 +314,8 @@ void main() async {
       expect(message.body, m2.body);
     });
     test('A256CBC-HS512 with ECDH-1PU P-384', () async {
-      var c = elliptic.getP384();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-384',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-384',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp384r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-384');
 
       var encrypted = await message.encrypt(
         senderPrivateKeyJwk: aliceJWK,
@@ -553,32 +329,8 @@ void main() async {
       expect(message.body, m2.body);
     });
     test('A256CBC-HS512 with ECDH-1PU P-521', () async {
-      var c = elliptic.getP521();
-      var alice = c.generatePrivateKey();
-      var bob = c.generatePrivateKey();
-
-      var aliceJWK = {
-        'kid': 'did:example:alice',
-        'crv': 'P-521',
-        'kty': 'EC',
-        'd': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(alice.publicKey.Y)))
-      };
-      var bobJWK = {
-        'kid': 'did:example:bob',
-        'crv': 'P-521',
-        'kty': 'EC',
-        'd':
-            removePaddingFromBase64(base64UrlEncode(unsignedIntToBytes(bob.D))),
-        'x': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.X))),
-        'y': removePaddingFromBase64(
-            base64UrlEncode(unsignedIntToBytes(bob.publicKey.Y)))
-      };
+      var c = pc.ECCurve_secp521r1();
+      var (aliceJWK, bobJWK) = keyGen(c, 'P-521');
 
       var encrypted = await message.encrypt(
         senderPrivateKeyJwk: aliceJWK,

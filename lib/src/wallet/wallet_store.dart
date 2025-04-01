@@ -1,12 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:bip39/bip39.dart';
-import 'package:crypto/crypto.dart';
 import 'package:hive/hive.dart';
+import 'package:pointycastle/export.dart' as pc;
 
 import '../../didcomm.dart';
-import '../util/private_util.dart';
 import 'hive_model.dart';
 import 'key_storage.dart';
 
@@ -74,8 +73,9 @@ class WalletStore {
 
     //password to AES-Key
     if (password != null) {
-      var generator = PBKDF2(hash: sha256);
-      var aesKey = generator.generateKey(password, "salt", 1000, 32);
+      var generator = pc.PBKDF2KeyDerivator(pc.HMac(pc.SHA256Digest(), 64));
+      generator.init(pc.Pbkdf2Parameters(ascii.encode('salt'), 1000, 32));
+      var aesKey = generator.process(ascii.encode(password));
       //only values are encrypted, keys are stored in plaintext
       try {
         _credentialBox = await Hive.openBox<Credential>(
@@ -274,10 +274,6 @@ class WalletStore {
   Future<String?> initialize(
       {String? mnemonic, String network = 'mainnet'}) async {
     var mne = mnemonic;
-    if (mnemonic == null) {
-      mne = generateMnemonic();
-    }
-    var seed = mnemonicToSeed(mne!);
 
     await _configBox!.put('network', network);
 

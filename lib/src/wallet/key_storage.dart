@@ -4,16 +4,10 @@ import 'dart:typed_data';
 
 import 'package:base_codecs/base_codecs.dart';
 import 'package:bip32/bip32.dart';
-import 'package:bip39/bip39.dart';
-import 'package:crypto/crypto.dart';
-import 'package:crypto_keys/crypto_keys.dart';
 import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
 import 'package:ed25519_hd_key/ed25519_hd_key.dart';
-import 'package:elliptic/ecdh.dart';
-import 'package:elliptic/elliptic.dart' as elliptic;
 import 'package:hive/hive.dart';
-import 'package:web3dart/crypto.dart';
-import 'package:web3dart/web3dart.dart';
+import 'package:pointycastle/export.dart' as pc;
 import 'package:x25519/x25519.dart' as x;
 
 import '../util/private_util.dart';
@@ -84,8 +78,9 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
     List<int>? aesKey;
     try {
       if (_password != null) {
-        var generator = PBKDF2(hash: sha256);
-        aesKey = generator.generateKey(_password!, "salt", 1000, 32);
+        var generator = pc.PBKDF2KeyDerivator(pc.HMac(pc.SHA256Digest(), 64));
+        generator.init(pc.Pbkdf2Parameters(ascii.encode('salt'), 1000, 32));
+        aesKey = generator.process(ascii.encode(_password!));
       }
       _keyBox = await Hive.openBox(
           'keybox${_nameExpansion != null ? '_$_nameExpansion' : ''}',
@@ -93,8 +88,7 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
           encryptionCipher: aesKey != null ? HiveAesCipher(aesKey) : null);
       var seed = _keyBox!.get('seed');
       if (seed == null) {
-        var mne = generateMnemonic();
-        seed = mnemonicToSeed(mne);
+        seed = getSecureRandom().nextBytes(32);
         _keyBox!.put('seed', seed);
         await _keyBox!.put('lastIndex256k', 0);
         await _keyBox!.put('lastIndexEd25519', 0);
@@ -122,6 +116,12 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
       _keyBox!.put('lastCredentialIndex', _keyBox!.get('lastIndex256k'));
       _keyBox!.put('lastCredentialIndexEd', _keyBox!.get('lastIndexEd25519'));
       _keyBox!.put('lastCredentialIndexX', _keyBox!.get('lastIndexX25519'));
+
+      var update = _keyBox!.get('update');
+      if (update == null) {
+        _update();
+        _keyBox!.put('update', 'true');
+      }
     } catch (e) {
       if (e is HiveError && e.message.contains('corrupted')) {
         throw WalletException('Cant open boxes. Maybe wrong password?');
@@ -131,11 +131,24 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
     }
   }
 
+  _update() {
+    for (var entry in _keyBox!.keys) {
+      if ((entry as String).startsWith('did:key:zQ3s')) {
+        var data = _keyBox!.get(entry);
+        if ((data as String).startsWith('m')) {
+          var master = BIP32.fromSeed(_keyBox!.get('seed'));
+          var key = master.derivePath(data);
+          _keyBox!.put(entry, bytesToHex(key.privateKey!));
+        }
+      }
+    }
+  }
+
   @override
   FutureOr<String> generateKey(KeyType keyType,
       [Map<String, dynamic>? additionalProperties]) {
     if (keyType == KeyType.secp256k1) {
-      return _getNextDidP256k();
+      return _getNextDidP(keyType);
     } else if (keyType == KeyType.ed25519) {
       return _getNextDidEd25519();
     } else if (keyType == KeyType.p384 ||
@@ -180,8 +193,8 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
   }
 
   List<int> _edPrivateToXPrivate(ed.PrivateKey private) {
-    var hash = sha512.convert(private.bytes.sublist(0, 32));
-    var d = hash.bytes;
+    var d = pc.SHA512Digest()
+        .process(Uint8List.fromList(private.bytes.sublist(0, 32)));
     d[0] &= 248;
     d[31] &= 127;
     d[31] |= 64;
@@ -189,24 +202,35 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
   }
 
   Future<String> _getNextDidP(KeyType keyType) async {
-    elliptic.Curve c;
     List<int> prefix;
+    pc.ECDomainParameters curve;
     if (keyType == KeyType.p521) {
-      c = elliptic.getP521();
+      curve = pc.ECCurve_secp521r1();
       prefix = [130, 36];
     } else if (keyType == KeyType.p384) {
-      c = elliptic.getP384();
+      curve = pc.ECCurve_secp384r1();
       prefix = [129, 36];
+    } else if (keyType == KeyType.secp256k1) {
+      curve = pc.ECCurve_secp256k1();
+      prefix = [231, 1];
     } else {
-      c = elliptic.getP256();
+      curve = pc.ECCurve_secp256r1();
       prefix = [128, 36];
     }
 
-    var privateKey = c.generatePrivateKey();
-    var did =
-        'did:key:z${base58BitcoinEncode(Uint8List.fromList(prefix + hexToBytes(privateKey.publicKey.toCompressedHex())))}';
+    var keyGen = pc.ECKeyGenerator();
+    keyGen.init(pc.ParametersWithRandom(
+        pc.ECKeyGeneratorParameters(curve), getSecureRandom()));
+    var newKey = keyGen.generateKeyPair();
 
-    await _keyBox!.put(did, privateKey.toHex());
+    var encodedPubKey = (newKey.publicKey as pc.ECPublicKey).Q!.getEncoded();
+    var encodedPrivate =
+        unsignedIntToBytes((newKey.privateKey as pc.ECPrivateKey).d!);
+
+    var did =
+        'did:key:z${base58BitcoinEncode(Uint8List.fromList(prefix + encodedPubKey))}';
+
+    await _keyBox!.put(did, bytesToHex(encodedPrivate));
     return did;
   }
 
@@ -227,11 +251,14 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
   }
 
   String _bip32KeyToDid(BIP32 key) {
-    var private = EthPrivateKey.fromHex(bytesToHex(key.privateKey!));
+    var curve = pc.ECCurve_secp256k1();
+    var private2 = pc.ECPrivateKey(bytesToUnsignedInt(key.privateKey!), curve);
+    var q = curve.G * private2.d;
+
     return 'did:key:z${base58BitcoinEncode(Uint8List.fromList([
           231,
           1
-        ] + private.publicKey.getEncoded().toList()))}';
+        ] + q!.getEncoded()))}';
   }
 
   Future<String> _getNextDidEd25519() async {
@@ -274,37 +301,62 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
           data);
       return signature;
     } else {
-      Identifier c, a;
+      pc.ECDomainParameters curve;
+      pc.Digest digest;
       BigInt privateKey;
 
       if (keyId.startsWith('did:key:zQ3s')) {
-        c = curves.p256k;
-        a = algorithms.signing.ecdsa.sha256;
-        var master = BIP32.fromSeed(_keyBox!.get('seed'));
-        var key = master.derivePath(keyData);
-        privateKey = EthPrivateKey(key.privateKey!).privateKeyInt;
+        curve = pc.ECCurve_secp256k1();
+        digest = pc.SHA256Digest();
+        if ((keyData as String).startsWith('m')) {
+          var master = BIP32.fromSeed(_keyBox!.get('seed'));
+          var key = master.derivePath(keyData);
+          privateKey = pc.ECPrivateKey(
+                  bytesToUnsignedInt(key.privateKey!), pc.ECCurve_secp256k1())
+              .d!;
+        } else {
+          var p = hexToBytes(keyData);
+          privateKey = bytesToUnsignedInt(p);
+        }
       } else if (keyId.startsWith('did:key:zDn')) {
-        c = curves.p256;
-        a = algorithms.signing.ecdsa.sha256;
+        curve = pc.ECCurve_secp256r1();
+        digest = pc.SHA256Digest();
         var p = hexToBytes(keyData);
         privateKey = bytesToUnsignedInt(p);
       } else if (keyId.startsWith('did:key:z82')) {
-        c = curves.p384;
-        a = algorithms.signing.ecdsa.sha384;
+        curve = pc.ECCurve_secp384r1();
+        digest = pc.SHA384Digest();
         privateKey = hexToInt(keyData);
       } else if (keyId.startsWith('did:key:z2J9')) {
-        c = curves.p521;
-        a = algorithms.signing.ecdsa.sha512;
+        curve = pc.ECCurve_secp521r1();
+        digest = pc.SHA512Digest();
         privateKey = hexToInt(keyData);
       } else {
         throw Exception('Unsupported curve');
       }
 
-      var k = EcPrivateKey(eccPrivateKey: privateKey, curve: c);
-
-      var signer = k.createSigner(a);
-      var sig = signer.sign(data);
-      return sig.data;
+      var private = pc.ECPrivateKey(privateKey, curve);
+      var generator = pc.ECDSASigner(digest, null);
+      generator.init(
+          true,
+          pc.ParametersWithRandom(
+              pc.PrivateKeyParameter<pc.ECPrivateKey>(private),
+              getSecureRandom()));
+      var sig = generator.generateSignature(Uint8List.fromList(data))
+          as pc.ECSignature;
+      if (keyId.startsWith('did:key:z2J9')) {
+        var rList = unsignedIntToBytes(sig.r).toList();
+        while (rList.length < 66) {
+          rList = [0] + rList;
+        }
+        var sList = unsignedIntToBytes(sig.s).toList();
+        while (sList.length < 66) {
+          sList = [0] + sList;
+        }
+        return Uint8List.fromList(rList + sList);
+      }
+      return Uint8List.fromList(unsignedIntToBytes(sig.r).toList() +
+          unsignedIntToBytes(sig.s).toList());
     }
   }
 
@@ -354,53 +406,66 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
           Uint8List.fromList(_edPrivateToXPrivate(private)).sublist(0, 32);
       var castedPublic = base64Decode(addPaddingToBase64(otherPublicKey['x']));
       z = x.X25519(castedPrivate, castedPublic);
+      return Uint8List.fromList(z);
     } else {
-      elliptic.Curve? c;
-      BigInt privateKey;
+      pc.ECDomainParameters curve;
+      pc.ECPrivateKey private;
+      int length;
 
       if (keyId.startsWith('did:key:zQ3s')) {
         var master = BIP32.fromSeed(_keyBox!.get('seed'));
         var key = master.derivePath(keyData);
-        privateKey = EthPrivateKey(key.privateKey!).privateKeyInt;
-        c = elliptic.getSecp256k1();
+        curve = pc.ECCurve_secp256k1();
+        private = pc.ECPrivateKey(bytesToUnsignedInt(key.privateKey!), curve);
+        length = 32;
       } else if (keyId.startsWith('did:key:zDn')) {
         if (crv != 'P-256') {
           throw Exception(
               'crv of public key does not match private key. ($crv != P-256)');
         }
         var p = hexToBytes(keyData);
-        privateKey = bytesToUnsignedInt(p);
-        c = elliptic.getP256();
+        curve = pc.ECCurve_secp256r1();
+        length = 32;
+        private = pc.ECPrivateKey(bytesToUnsignedInt(p), curve);
       } else if (keyId.startsWith('did:key:z82')) {
         if (crv != 'P-384') {
           throw Exception(
               'crv of public key does not match private key. ($crv != P-384)');
         }
         var p = hexToBytes(keyData);
-        privateKey = bytesToUnsignedInt(p);
-        c = elliptic.getP384();
+        curve = pc.ECCurve_secp384r1();
+        length = 48;
+        private = pc.ECPrivateKey(bytesToUnsignedInt(p), curve);
       } else if (keyId.startsWith('did:key:z2J9')) {
         if (crv != 'P-521') {
           throw Exception(
               'crv of public key does not match private key. ($crv != P-521)');
         }
-        privateKey = hexToInt(keyData);
-        c = elliptic.getP521();
+        var p = hexToBytes(keyData);
+        curve = pc.ECCurve_secp521r1();
+        private = pc.ECPrivateKey(bytesToUnsignedInt(p), curve);
+        length = 66;
       } else {
         throw Exception('Unsupported curve');
       }
 
-      var castedPrivate = elliptic.PrivateKey(c, privateKey);
-      var castedPublic = elliptic.PublicKey.fromPoint(
-          c,
-          elliptic.AffinePoint.fromXY(
+      var pubKey = pc.ECPublicKey(
+          curve.curve.createPoint(
               bytesToUnsignedInt(
                   base64Decode(addPaddingToBase64(otherPublicKey['x']))),
               bytesToUnsignedInt(
-                  base64Decode(addPaddingToBase64(otherPublicKey['y'])))));
-      z = computeSecret(castedPrivate, castedPublic);
+                  base64Decode(addPaddingToBase64(otherPublicKey['y'])))),
+          curve);
+      var agree = pc.ECDHBasicAgreement();
+      agree.init(private);
+      var secret = agree.calculateAgreement(pubKey);
+      var z1 = unsignedIntToBytes(secret);
+
+      while (z1.length < length) {
+        z1 = Uint8List.fromList([0] + z1);
+      }
+      return z1;
     }
-    return Uint8List.fromList(z);
   }
 
   @override
@@ -425,32 +490,41 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
       return ed.verify(
           ed.PublicKey(decodedKey), Uint8List.fromList(signedData), signature);
     } else {
-      Identifier alg, curve;
+      pc.ECDomainParameters c;
+      pc.Digest hash;
       if (keyId.startsWith('did:key:zQ3s')) {
-        alg = algorithms.signing.ecdsa.sha256;
-        curve = curves.p256k;
+        c = pc.ECCurve_secp256k1();
+        hash = pc.SHA256Digest();
       } else if (keyId.startsWith('did:key:zDn')) {
-        alg = algorithms.signing.ecdsa.sha256;
-        curve = curves.p256;
+        c = pc.ECCurve_secp256r1();
+        hash = pc.SHA256Digest();
       } else if (keyId.startsWith('did:key:z82')) {
-        alg = algorithms.signing.ecdsa.sha384;
-        curve = curves.p384;
+        c = pc.ECCurve_secp384r1();
+        hash = pc.SHA384Digest();
       } else if (keyId.startsWith('did:key:z2J9')) {
-        alg = algorithms.signing.ecdsa.sha512;
-        curve = curves.p521;
+        c = pc.ECCurve_secp521r1();
+        hash = pc.SHA512Digest();
       } else {
         throw Exception('');
       }
-      var castedKey = EcPublicKey(
-          xCoordinate:
-              bytesToUnsignedInt(base64Decode(addPaddingToBase64(pubKey['x']))),
-          yCoordinate:
-              bytesToUnsignedInt(base64Decode(addPaddingToBase64(pubKey['y']))),
-          curve: curve);
-      var verifier = castedKey.createVerifier(alg);
 
-      return verifier.verify(
-          Uint8List.fromList(signedData), Signature(signature));
+      final generator = pc.ECDSASigner(hash, null);
+      var public = pc.ECPublicKey(
+          c.curve.createPoint(
+              bytesToUnsignedInt(base64Decode(addPaddingToBase64(pubKey['x']))),
+              bytesToUnsignedInt(
+                  base64Decode(addPaddingToBase64(pubKey['y'])))),
+          c);
+      var s = signature.length ~/ 2;
+
+      generator.init(
+        false,
+        pc.PublicKeyParameter<pc.PublicKey>(public),
+      );
+      return generator.verifySignature(
+          Uint8List.fromList(signedData),
+          pc.ECSignature(bytesToUnsignedInt(signature.sublist(0, s)),
+              bytesToUnsignedInt(signature.sublist(s))));
     }
   }
 }

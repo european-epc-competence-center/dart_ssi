@@ -3,16 +3,14 @@ import 'dart:typed_data';
 
 import 'package:asn1lib/asn1lib.dart';
 import 'package:base_codecs/base_codecs.dart';
-import 'package:crypto/crypto.dart';
 import 'package:dart_multihash/dart_multihash.dart';
 import 'package:dart_ssi/did.dart';
-import 'package:dart_ssi/src/util/crypto_provider.dart';
 import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
-import 'package:elliptic/elliptic.dart' as elliptic;
-import 'package:elliptic/elliptic.dart';
-import 'package:web3dart/crypto.dart';
+import 'package:pointycastle/export.dart' as pc;
 
 import '../wallet/wallet_store.dart';
+import 'crypto_provider.dart';
+import 'private_util.dart';
 
 Uint8List _multibaseToUint8List(String multibase) {
   if (multibase.startsWith('z')) {
@@ -52,39 +50,39 @@ Map<String, dynamic> multibaseKeyToJwk(String multibaseKey) {
   } else if (indicatorHex == '8024') {
     jwk['kty'] = 'EC';
     jwk['crv'] = 'P-256';
-    var c = getP256();
-    var pub = c.compressedHexToPublicKey(hex.encode(key));
-    jwk['x'] = removePaddingFromBase64(base64UrlEncode(
-        pub.X < BigInt.zero ? intToBytes(pub.X) : unsignedIntToBytes(pub.X)));
-    jwk['y'] = removePaddingFromBase64(base64UrlEncode(
-        pub.Y < BigInt.zero ? intToBytes(pub.Y) : unsignedIntToBytes(pub.Y)));
+    var curve = pc.ECCurve_secp256r1();
+    var d = curve.curve.decodePoint(key);
+    jwk['x'] = removePaddingFromBase64(
+        base64UrlEncode(unsignedIntToBytes(d!.x!.toBigInteger()!)));
+    jwk['y'] = removePaddingFromBase64(
+        base64UrlEncode(unsignedIntToBytes(d.y!.toBigInteger()!)));
   } else if (indicatorHex == 'e701') {
     jwk['kty'] = 'EC';
     jwk['crv'] = 'secp256k1';
-    var c = getSecp256k1();
-    var pub = c.compressedHexToPublicKey(hex.encode(key));
-    jwk['x'] = removePaddingFromBase64(base64UrlEncode(
-        pub.X < BigInt.zero ? intToBytes(pub.X) : unsignedIntToBytes(pub.X)));
-    jwk['y'] = removePaddingFromBase64(base64UrlEncode(
-        pub.Y < BigInt.zero ? intToBytes(pub.Y) : unsignedIntToBytes(pub.Y)));
+    var curve = pc.ECCurve_secp256k1();
+    var d = curve.curve.decodePoint(key);
+    jwk['x'] = removePaddingFromBase64(
+        base64UrlEncode(unsignedIntToBytes(d!.x!.toBigInteger()!)));
+    jwk['y'] = removePaddingFromBase64(
+        base64UrlEncode(unsignedIntToBytes(d.y!.toBigInteger()!)));
   } else if (indicatorHex == '8124') {
     jwk['kty'] = 'EC';
     jwk['crv'] = 'P-384';
-    var c = getP384();
-    var pub = c.compressedHexToPublicKey(hex.encode(key));
-    jwk['x'] = removePaddingFromBase64(base64UrlEncode(
-        pub.X < BigInt.zero ? intToBytes(pub.X) : unsignedIntToBytes(pub.X)));
-    jwk['y'] = removePaddingFromBase64(base64UrlEncode(
-        pub.Y < BigInt.zero ? intToBytes(pub.Y) : unsignedIntToBytes(pub.Y)));
+    var curve = pc.ECCurve_secp384r1();
+    var d = curve.curve.decodePoint(key);
+    jwk['x'] = removePaddingFromBase64(
+        base64UrlEncode(unsignedIntToBytes(d!.x!.toBigInteger()!)));
+    jwk['y'] = removePaddingFromBase64(
+        base64UrlEncode(unsignedIntToBytes(d.y!.toBigInteger()!)));
   } else if (indicatorHex == '8224') {
     jwk['kty'] = 'EC';
     jwk['crv'] = 'P-521';
-    var c = getP521();
-    var pub = c.compressedHexToPublicKey(hex.encode(key));
-    jwk['x'] = removePaddingFromBase64(base64UrlEncode(
-        pub.X < BigInt.zero ? intToBytes(pub.X) : unsignedIntToBytes(pub.X)));
-    jwk['y'] = removePaddingFromBase64(base64UrlEncode(
-        pub.Y < BigInt.zero ? intToBytes(pub.Y) : unsignedIntToBytes(pub.Y)));
+    var curve = pc.ECCurve_secp521r1();
+    var d = curve.curve.decodePoint(key);
+    jwk['x'] = removePaddingFromBase64(
+        base64UrlEncode(unsignedIntToBytes(d!.x!.toBigInteger()!)));
+    jwk['y'] = removePaddingFromBase64(
+        base64UrlEncode(unsignedIntToBytes(d.y!.toBigInteger()!)));
   } else {
     throw UnimplementedError(
         'Unsupported multicodec indicator 0x$indicatorHex');
@@ -100,34 +98,37 @@ String jwkToMultiBase(Map<String, dynamic> jwk) {
           1
         ] + base64Decode(addPaddingToBase64(jwk['x']))))}';
   } else if (crv == 'P-256') {
-    var c = elliptic.getP256();
-    var compressedHex = c.publicKeyToCompressedHex(elliptic.PublicKey(
-        c,
-        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['x']))),
-        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['y'])))));
-    var compressedBytes = hexDecode(compressedHex);
+    var curve = pc.ECCurve_secp256r1();
+    var key = pc.ECPublicKey(
+        curve.curve.createPoint(
+            bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['x']))),
+            bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['y'])))),
+        curve);
+    var compressedBytes = key.Q!.getEncoded();
     return 'z${base58BitcoinEncode(Uint8List.fromList([
           128,
           36
         ] + compressedBytes))}';
   } else if (crv == 'P-384') {
-    var c = elliptic.getP384();
-    var compressedHex = c.publicKeyToCompressedHex(elliptic.PublicKey(
-        c,
-        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['x']))),
-        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['y'])))));
-    var compressedBytes = hexDecode(compressedHex);
+    var curve = pc.ECCurve_secp384r1();
+    var key = pc.ECPublicKey(
+        curve.curve.createPoint(
+            bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['x']))),
+            bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['y'])))),
+        curve);
+    var compressedBytes = key.Q!.getEncoded();
     return 'z${base58BitcoinEncode(Uint8List.fromList([
           129,
           36
         ] + compressedBytes))}';
   } else if (crv == 'P-521') {
-    var c = elliptic.getP521();
-    var compressedHex = c.publicKeyToCompressedHex(elliptic.PublicKey(
-        c,
-        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['x']))),
-        bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['y'])))));
-    var compressedBytes = hexDecode(compressedHex);
+    var curve = pc.ECCurve_secp521r1();
+    var key = pc.ECPublicKey(
+        curve.curve.createPoint(
+            bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['x']))),
+            bytesToUnsignedInt(base64Decode(addPaddingToBase64(jwk['y'])))),
+        curve);
+    var compressedBytes = key.Q!.getEncoded();
     return 'z${base58BitcoinEncode(Uint8List.fromList([
           130,
           36
@@ -399,8 +400,7 @@ bool checkMultiHash(Uint8List hash, Uint8List data) {
     throw Exception("Hash function must be "
         "sha2-256 for now (Code: 34893)");
   }
-
-  var hashedData = sha256.convert(data).bytes;
+  var hashedData = pc.SHA256Digest().process(data);
   for (var i = 0; i < hashedData.length; i++) {
     var a = multihash.digest[i];
     var b = hashedData[i];
@@ -496,8 +496,8 @@ Future<List<int>> ecdhES(KeyAgreementGenerator keyAgreement,
       suppPubInfo;
 
   var kdfIn = [0, 0, 0, 1] + z + otherInfo;
-  var digest = sha256.convert(kdfIn);
-  return digest.bytes.sublist(0, keyDataLen ~/ 8);
+  var digest = pc.SHA256Digest().process(Uint8List.fromList(kdfIn));
+  return digest.sublist(0, keyDataLen ~/ 8);
 }
 
 Future<List<int>> ecdh1PU(
@@ -537,9 +537,9 @@ Future<List<int>> ecdh1PU(
       suppPubInfo;
 
   var kdfIn = [0, 0, 0, 1] + z + otherInfo;
-  var digest = sha256.convert(kdfIn);
+  var digest = pc.SHA256Digest().process(Uint8List.fromList(kdfIn));
 
-  return digest.bytes;
+  return digest;
 }
 
 Uint8List _int32BigEndianBytes(int value) =>

@@ -3,17 +3,17 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:base_codecs/base_codecs.dart';
-import 'package:crypto/crypto.dart';
 import 'package:dart_ssi/did.dart';
 import 'package:dart_ssi/oid.dart';
-import 'package:dart_ssi/src/credentials/jsonLdContext/json_web_signature_2020_context.dart';
 import 'package:json_ld_processor/json_ld_processor.dart';
 import 'package:json_path/json_path.dart';
+import 'package:pointycastle/export.dart' as pc;
 import 'package:sd_jwt/sd_jwt.dart';
 
 import '../../credentials.dart';
 import '../util/types.dart';
 import '../util/utils.dart';
+import 'jsonLdContext/json_web_signature_2020_context.dart';
 
 class VerifiableCredential extends JsonObject {
   late List<dynamic> context;
@@ -179,14 +179,12 @@ class VerifiableCredential extends JsonObject {
     var normalizedData = await JsonLdProcessor.normalize(
         _serializeWithoutProof(),
         options: JsonLdOptions(documentLoader: loadDocument, safeMode: true));
-    var hashedData = sha256.convert(utf8.encode(normalizedData)).bytes;
+    var hashedData = pc.SHA256Digest().process(utf8.encode(normalizedData));
 
-    var hashedProofOptions = sha256
-        .convert(utf8.encode(await JsonLdProcessor.normalize(
-            proofOptions.toJson(),
+    var hashedProofOptions = pc.SHA256Digest().process(utf8.encode(
+        await JsonLdProcessor.normalize(proofOptions.toJson(),
             options:
-                JsonLdOptions(documentLoader: loadDocument, safeMode: true))))
-        .bytes;
+                JsonLdOptions(documentLoader: loadDocument, safeMode: true))));
 
     return hashedProofOptions + hashedData;
   }
@@ -578,18 +576,16 @@ class VerifiablePresentation extends JsonObject {
     var normalizedData = await JsonLdProcessor.normalize(
         _serializeWithoutProof(),
         options: JsonLdOptions(documentLoader: loadDocument, safeMode: true));
-    var hashedData = sha256.convert(utf8.encode(normalizedData)).bytes;
+    var hashedData = pc.SHA256Digest().process(utf8.encode(normalizedData));
     return hashedData;
   }
 
   Future<List<int>> _hashProofOptions(LinkedDataProof proofOptions,
       Function(Uri url, LoadDocumentOptions? options) loadDocument) async {
-    var hashedProofOptions = sha256
-        .convert(utf8.encode(await JsonLdProcessor.normalize(
-            proofOptions.toJson(),
+    var hashedProofOptions = pc.SHA256Digest().process(utf8.encode(
+        await JsonLdProcessor.normalize(proofOptions.toJson(),
             options:
-                JsonLdOptions(documentLoader: loadDocument, safeMode: true))))
-        .bytes;
+                JsonLdOptions(documentLoader: loadDocument, safeMode: true))));
 
     return hashedProofOptions;
   }

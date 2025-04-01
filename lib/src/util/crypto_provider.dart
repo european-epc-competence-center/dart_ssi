@@ -3,15 +3,14 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dart_ssi/credentials.dart';
-import 'package:dart_ssi/src/util/utils.dart';
-import 'package:elliptic/ecdh.dart' as ecdh;
-import 'package:elliptic/elliptic.dart' as elliptic;
 import 'package:iso_mdoc/iso_mdoc.dart';
+import 'package:pointycastle/export.dart' as pc;
 import 'package:sd_jwt/sd_jwt.dart';
-import 'package:web3dart/crypto.dart';
 import 'package:x25519/x25519.dart' as x25519;
 
 import '../wallet/wallet_store.dart';
+import 'private_util.dart';
+import 'utils.dart';
 
 class WalletCryptoProviderForSdJwt extends CryptoProvider {
   final WalletStore wallet;
@@ -117,41 +116,55 @@ class JwkKeyAgreementGenerator extends KeyAgreementGenerator {
     if (crv != otherPublicKey['crv']) {
       throw Exception('curves do not match ($crv != ${otherPublicKey['crv']}');
     }
-    elliptic.Curve? c;
+
+    pc.ECDomainParameters curve;
+    pc.ECPrivateKey private;
+    int length;
 
     if (crv.startsWith('P') || crv.startsWith('secp256k1')) {
       if (crv == 'P-256') {
-        c = elliptic.getP256();
+        length = 32;
+        curve = pc.ECCurve_secp256r1();
       } else if (crv == 'P-384') {
-        c = elliptic.getP384();
+        length = 48;
+        curve = pc.ECCurve_secp384r1();
       } else if (crv == 'P-521') {
-        c = elliptic.getP521();
+        length = 66;
+        curve = pc.ECCurve_secp521r1();
       } else if (crv == 'secp256k1') {
-        c = elliptic.getSecp256k1();
+        length = 32;
+        curve = pc.ECCurve_secp256k1();
       } else {
         throw UnimplementedError("Curve `$crv` not supported");
       }
 
-      var castedPrivate = elliptic.PrivateKey(
-          c,
-          bytesToUnsignedInt(
-              base64Decode(addPaddingToBase64(privateKey['d']))));
-      var castedPublic = elliptic.PublicKey.fromPoint(
-          c,
-          elliptic.AffinePoint.fromXY(
+      var pubKey = pc.ECPublicKey(
+          curve.curve.createPoint(
               bytesToUnsignedInt(
                   base64Decode(addPaddingToBase64(otherPublicKey['x']))),
               bytesToUnsignedInt(
-                  base64Decode(addPaddingToBase64(otherPublicKey['y'])))));
-      z = ecdh.computeSecret(castedPrivate, castedPublic);
+                  base64Decode(addPaddingToBase64(otherPublicKey['y'])))),
+          curve);
+      private = pc.ECPrivateKey(
+          bytesToUnsignedInt(base64Decode(addPaddingToBase64(privateKey['d']))),
+          curve);
+      var agree = pc.ECDHBasicAgreement();
+      agree.init(private);
+      var secret = agree.calculateAgreement(pubKey);
+      var z1 = unsignedIntToBytes(secret);
+
+      while (z1.length < length) {
+        z1 = Uint8List.fromList([0] + z1);
+      }
+      return z1;
     } else if (crv.startsWith('X')) {
       var castedPrivate = base64Decode(addPaddingToBase64(privateKey['d']));
       var castedPublic = base64Decode(addPaddingToBase64(otherPublicKey['x']));
       z = x25519.X25519(castedPrivate, castedPublic);
+      return Uint8List.fromList(z);
     } else {
       throw UnimplementedError("Curve `$crv` not supported");
     }
-    return Uint8List.fromList(z);
   }
 }
 
