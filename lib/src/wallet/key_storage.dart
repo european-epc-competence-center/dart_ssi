@@ -87,6 +87,7 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
           crashRecovery: false,
           encryptionCipher: aesKey != null ? HiveAesCipher(aesKey) : null);
       var seed = _keyBox!.get('seed');
+      print('LastIndexEd 1: ${_keyBox!.get('lastIndexEd25519')}');
       if (seed == null) {
         seed = getSecureRandom().nextBytes(32);
         _keyBox!.put('seed', seed);
@@ -94,6 +95,32 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
         await _keyBox!.put('lastIndexEd25519', 0);
         await _keyBox!.put('lastIndexX25519', 0);
       }
+
+      _updateIndices();
+
+      print('LastIndexEd 2: ${_keyBox!.get('lastIndexEd25519')}');
+
+      var update = _keyBox!.get('update');
+      if (update == null) {
+        _update();
+        _keyBox!.put('update', 'true');
+      }
+    } catch (e) {
+      if (e is HiveError && e.message.contains('corrupted')) {
+        throw WalletException('Cant open boxes. Maybe wrong password?');
+      } else {
+        rethrow;
+      }
+    }
+  }
+
+  _updateIndices() {
+    var i = _keyBox?.get('lastIndexEd25519');
+    if (i != null && i != 0) {
+      _keyBox!.put('indexUpdate', 'true');
+    }
+    var u = _keyBox?.get('indexUpdate');
+    if (u == null) {
       var lci = _keyBox?.get('lastCredentialIndex');
       if (lci != null) {
         _keyBox!.put('lastIndex256k', lci);
@@ -113,21 +140,7 @@ class SoftwareKeyStoreBackend extends KeyStoreBackend {
         _keyBox!.put('lastIndexX25519', 0);
       }
 
-      _keyBox!.put('lastCredentialIndex', _keyBox!.get('lastIndex256k'));
-      _keyBox!.put('lastCredentialIndexEd', _keyBox!.get('lastIndexEd25519'));
-      _keyBox!.put('lastCredentialIndexX', _keyBox!.get('lastIndexX25519'));
-
-      var update = _keyBox!.get('update');
-      if (update == null) {
-        _update();
-        _keyBox!.put('update', 'true');
-      }
-    } catch (e) {
-      if (e is HiveError && e.message.contains('corrupted')) {
-        throw WalletException('Cant open boxes. Maybe wrong password?');
-      } else {
-        rethrow;
-      }
+      _keyBox!.put('indexUpdate', 'true');
     }
   }
 
