@@ -252,12 +252,43 @@ void main() {
       var n1 = c1.items['org.iso.18013.5.1'];
       expect(n1?.length, 3);
     });
-    test('dcql, ldp_vc', () {
-      // not possible now
-      // value filtering only allowed for strings, integer boolean and
-      // metadata definition not present for this credential type
+    test('dcql, ldp_vc', () async {
+      var query = {
+        "credentials": [
+          {
+            "id": "my_credential",
+            "format": "ldp_vc",
+            "meta": {
+              "types": [
+                [
+                  "http://schema.org/TestVc1",
+                  "http://schema.org/TestVc2",
+                  "https://www.w3.org/2018/credentials#VerifiableCredential"
+                ]
+              ]
+            },
+          }
+        ]
+      };
+
+      var result = await searchCredentialsForDcqlQuery(
+          DcqlQuery.fromJson(query),
+          w3cCredentials: [w3cVc1, w3cVc2, w3cVc3],
+          sdJwtCredentials: [sdJwt1, sdJwt2],
+          mdocCredentials: [msoVc1, msoVc2]);
+
+      expect(result.length, 1);
+
+      var f1 = result.first;
+      expect(f1.fulfilled, isTrue);
+      expect(f1.sdJwtCredentials, null);
+      expect(f1.credentials?.length, 2);
+      expect(f1.isoMdocCredentials, null);
+      expect(f1.nestedResults, null);
+      expect(f1.matchingDescriptorIds.contains('my_credential'), isTrue);
+      expect(f1.matchingDescriptorIds.length, 1);
     });
-    test('dcql, sd_jwt', () {
+    test('dcql, sd_jwt', () async {
       var query = {
         "credentials": [
           {
@@ -269,7 +300,8 @@ void main() {
           }
         ]
       };
-      var result = searchCredentialsForDcqlQuery(DcqlQuery.fromJson(query),
+      var result = await searchCredentialsForDcqlQuery(
+          DcqlQuery.fromJson(query),
           w3cCredentials: [w3cVc1, w3cVc2, w3cVc3],
           sdJwtCredentials: [sdJwt1, sdJwt2],
           mdocCredentials: [msoVc1, msoVc2]);
@@ -295,7 +327,7 @@ void main() {
       expect(clo?.length, cl1?.length);
       expect(clo!.toSet().intersection(cl1!.toSet()).length, clo.length);
     });
-    test('dcql, mso_mdoc', () {
+    test('dcql, mso_mdoc', () async {
       var query = {
         "credentials": [
           {
@@ -305,7 +337,8 @@ void main() {
           }
         ]
       };
-      var result = searchCredentialsForDcqlQuery(DcqlQuery.fromJson(query),
+      var result = await searchCredentialsForDcqlQuery(
+          DcqlQuery.fromJson(query),
           w3cCredentials: [w3cVc1, w3cVc2, w3cVc3],
           sdJwtCredentials: [sdJwt1, sdJwt2],
           mdocCredentials: [msoVc1, msoVc2]);
@@ -379,7 +412,7 @@ void main() {
           c1sd.toSdJwt().additionalClaims?.keys.contains('age_equal_or_over'),
           isTrue);
     });
-    test('dcql', () {
+    test('dcql', () async {
       var query = {
         "credentials": [
           {
@@ -421,7 +454,8 @@ void main() {
           },
         ]
       };
-      var result = searchCredentialsForDcqlQuery(DcqlQuery.fromJson(query),
+      var result = await searchCredentialsForDcqlQuery(
+          DcqlQuery.fromJson(query),
           w3cCredentials: [w3cVc1, w3cVc2, w3cVc3],
           sdJwtCredentials: [sdJwt1, sdJwt2],
           mdocCredentials: [msoVc1, msoVc2]);
@@ -554,7 +588,7 @@ void main() {
           isTrue);
     });
 
-    test('dcql using only credential sets', () {
+    test('dcql using only credential sets', () async {
       var query = {
         "credentials": [
           {
@@ -626,7 +660,8 @@ void main() {
           },
         ]
       };
-      var result = searchCredentialsForDcqlQuery(DcqlQuery.fromJson(query),
+      var result = await searchCredentialsForDcqlQuery(
+          DcqlQuery.fromJson(query),
           w3cCredentials: [w3cVc1, w3cVc2, w3cVc3],
           sdJwtCredentials: [sdJwt1, sdJwt2],
           mdocCredentials: [msoVc1, msoVc2]);
@@ -696,7 +731,7 @@ void main() {
       expect(f6.matchingDescriptorIds.length, 1);
     });
 
-    test('dcql using only claim sets and credential sets', () {
+    test('dcql using only claim sets and credential sets', () async {
       var query = {
         "credentials": [
           {
@@ -765,7 +800,8 @@ void main() {
           },
         ]
       };
-      var result = searchCredentialsForDcqlQuery(DcqlQuery.fromJson(query),
+      var result = await searchCredentialsForDcqlQuery(
+          DcqlQuery.fromJson(query),
           w3cCredentials: [w3cVc1, w3cVc2, w3cVc3],
           sdJwtCredentials: [sdJwt1, sdJwt2],
           mdocCredentials: [msoVc1, msoVc2]);

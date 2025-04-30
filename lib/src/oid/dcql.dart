@@ -5,6 +5,7 @@ import 'package:dart_ssi/oid.dart';
 import 'package:dart_ssi/src/util/types.dart';
 import 'package:dart_ssi/src/util/utils.dart';
 import 'package:iso_mdoc/iso_mdoc.dart';
+import 'package:json_ld_processor/json_ld_processor.dart';
 import 'package:json_path/json_path.dart';
 import 'package:sd_jwt/sd_jwt.dart';
 import 'package:uuid/uuid.dart';
@@ -134,16 +135,21 @@ class DcqlQuery extends JsonObject {
 
 class CredentialQuery extends JsonObject {
   String id, format;
+  bool multiple, requireCryptographicHolderBinding;
   CredentialQueryMetadata? meta;
   List<ClaimsQuery>? claims;
   List<List<String>>? claimSets;
+  List<TrustedAuthorityQueries>? trustedAuthorities;
 
   CredentialQuery(
       {String? id,
       required this.format,
+      this.multiple = false,
+      this.requireCryptographicHolderBinding = true,
       this.claims,
       this.meta,
-      this.claimSets})
+      this.claimSets,
+      this.trustedAuthorities})
       : id = id ?? Uuid().v4();
 
   factory CredentialQuery.fromJson(dynamic json) {
@@ -164,11 +170,21 @@ class CredentialQuery extends JsonObject {
         ?.map((e) => (e as List).cast<String>())
         .toList();
 
+    List<TrustedAuthorityQueries>? ta;
+    if (data.containsKey('trusted_authorities')) {
+      var tmp = data['trusted_authorities'] as List;
+      ta = tmp.map((e) => TrustedAuthorityQueries.fromJson(e)).toList();
+    }
+
     return CredentialQuery(
         format: data['format']!,
         id: data['id']!,
         claims: c,
         meta: m,
+        multiple: data['multiple'] ?? false,
+        trustedAuthorities: ta,
+        requireCryptographicHolderBinding:
+            data['require_cryptographic_holder_binding'] ?? true,
         claimSets: cs);
   }
 
@@ -178,24 +194,47 @@ class CredentialQuery extends JsonObject {
     if (meta != null) {
       data['meta'] = meta!.toJson();
     }
+    data['multiple'] = multiple;
+    data['require_cryptographic_holder_binding'] =
+        requireCryptographicHolderBinding;
     if (claims != null) {
       data['claims'] = claims!.map((e) => e.toJson()).toList();
     }
     if (claimSets != null) {
       data['claim_sets'] = claimSets;
     }
+    if (trustedAuthorities != null && trustedAuthorities!.isNotEmpty) {
+      data['trusted_authorities'] =
+          trustedAuthorities!.map((e) => e.toJson()).toList();
+    }
 
     return data;
+  }
+}
+
+class TrustedAuthorityQueries extends JsonObject {
+  String type;
+  List<String> values;
+
+  TrustedAuthorityQueries({required this.type, required this.values});
+
+  factory TrustedAuthorityQueries.fromJson(dynamic jsonData) {
+    var data = credentialToMap(jsonData);
+    return TrustedAuthorityQueries(
+        type: data['type']!, values: (data['values'] as List).cast<String>());
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {'type': type, 'values': values};
   }
 }
 
 class CredentialSetQuery extends JsonObject {
   List<List<String>> options;
   bool required;
-  String? purpose;
 
-  CredentialSetQuery(
-      {required this.options, this.required = true, this.purpose});
+  CredentialSetQuery({required this.options, this.required = true});
 
   factory CredentialSetQuery.fromJson(dynamic json) {
     var data = credentialToMap(json);
@@ -208,17 +247,15 @@ class CredentialSetQuery extends JsonObject {
     }
 
     return CredentialSetQuery(
-        options: opt,
-        required: data['required'] ?? true,
-        purpose: data['purpose']);
+      options: opt,
+      required: data['required'] ?? true,
+    );
   }
 
   @override
   Map<String, dynamic> toJson() {
     var data = {'options': options, 'required': required};
-    if (purpose != null) {
-      data['purpose'] = purpose!;
-    }
+
     return data;
   }
 }
@@ -234,6 +271,11 @@ class CredentialQueryMetadata extends JsonObject {
           vctValues: (data['vct_values'] as List).cast<String>());
     } else if (data.containsKey('doctype_value')) {
       return CredentialQueryMetadataMsoMdoc(doctype: data['doctype_value']);
+    } else if (data.containsKey('types')) {
+      return CredentialQueryMetadataLdpVc(
+          types: (data['types'] as List)
+              .map((e) => (e as List).map((i) => i as String).toList())
+              .toList());
     } else {
       return CredentialQueryMetadata();
     }
@@ -264,6 +306,17 @@ class CredentialQueryMetadataMsoMdoc extends CredentialQueryMetadata {
   @override
   toJson() {
     return {'doctype_value': doctype};
+  }
+}
+
+class CredentialQueryMetadataLdpVc extends CredentialQueryMetadata {
+  List<List<String>> types;
+
+  CredentialQueryMetadataLdpVc({required this.types});
+
+  @override
+  toJson() {
+    return {'types': types};
   }
 }
 
@@ -308,13 +361,13 @@ class ClaimsQuery extends JsonObject {
   }
 }
 
-List<FilterResult> searchCredentialsForDcqlQuery(DcqlQuery query,
+Future<List<FilterResult>> searchCredentialsForDcqlQuery(DcqlQuery query,
     {List<VerifiableCredential>? w3cCredentials,
     List<SdJws>? sdJwtCredentials,
-    List<IssuerSignedObject>? mdocCredentials}) {
+    List<IssuerSignedObject>? mdocCredentials}) async {
   List<FilterResult> result = [];
   for (var cQuery in query.credentials) {
-    result.add(_findCredentialsForCredentialQuery(cQuery,
+    result.add(await _findCredentialsForCredentialQuery(cQuery,
         w3cCredentials: w3cCredentials,
         sdJwtCredentials: sdJwtCredentials,
         mdocCredentials: mdocCredentials));
@@ -399,10 +452,10 @@ FilterResult _handleSetQueryOption(
       fulfilled: fulfilled);
 }
 
-FilterResult _findCredentialsForCredentialQuery(CredentialQuery query,
+Future<FilterResult> _findCredentialsForCredentialQuery(CredentialQuery query,
     {List<VerifiableCredential>? w3cCredentials,
     List<SdJws>? sdJwtCredentials,
-    List<IssuerSignedObject>? mdocCredentials}) {
+    List<IssuerSignedObject>? mdocCredentials}) async {
   if (query.format == OidCredentialFormat.sdJwtDc ||
       query.format == OidCredentialFormat.sdJwt) {
     if (sdJwtCredentials == null || sdJwtCredentials.isEmpty) {
@@ -570,6 +623,25 @@ FilterResult _findCredentialsForCredentialQuery(CredentialQuery query,
 
     List<VerifiableCredential> candidates = [];
     for (var cred in w3cCredentials) {
+      if (query.meta != null && query.meta is CredentialQueryMetadataLdpVc) {
+        var contextAndType = {'@context': cred.context, 'type': cred.type};
+        var expanded = await JsonLdProcessor.expand(contextAndType,
+            options: JsonLdOptions(documentLoader: loadDocumentFast));
+        var expandedJson = (jsonDecode(expanded) as List).first;
+        List<String> expandedTypes =
+            (expandedJson['@type'] as List).cast<String>();
+        bool matchingTypes = false;
+        for (var entry in (query.meta as CredentialQueryMetadataLdpVc).types) {
+          if (entry.toSet().containsAll(expandedTypes.toSet())) {
+            matchingTypes = true;
+            break;
+          }
+        }
+        if (!matchingTypes) {
+          continue;
+        }
+      }
+
       if (query.claims == null && query.claimSets == null) {
         candidates.add(cred);
       }
