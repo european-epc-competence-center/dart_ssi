@@ -879,5 +879,24 @@ void main() {
       expect(response.cNonceExpiresIn, response2.cNonceExpiresIn);
       expect(response.cNonce, response2.cNonce);
     });
+
+    test('draft 15 normal', () {
+      var data = {
+        "credentials": [
+          {"credential": "LUpixVCWJk0eOt4CXQe1NXK....WZwmhmn9OQp6YxX0a2L"},
+          {"credential": "YXNkZnNhZGZkamZqZGFza23....29tZTIzMjMyMzIzMjMy"}
+        ],
+        "notification_id": "3fwe98js"
+      };
+
+      var response = OidCredentialResponse.fromJson(data);
+      var response2 = OidCredentialResponse.fromJson(response.toJson());
+      print(response);
+
+      expect(response.credentials?.length, response2.credentials?.length);
+      expect(response.credentials?.length, 2);
+      expect(response2.notificationId, response.notificationId);
+      expect(response.notificationId, '3fwe98js');
+    });
   });
 }

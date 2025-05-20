@@ -1563,8 +1563,26 @@ class CredentialRequestProof extends JsonObject {
   }
 }
 
+class OidCredentialResponseCredentialEntry extends JsonObject {
+  dynamic credential;
+  OidCredentialResponseCredentialEntry({this.credential});
+
+  factory OidCredentialResponseCredentialEntry.fromJson(dynamic jsonData) {
+    var json = credentialToMap(jsonData);
+
+    return OidCredentialResponseCredentialEntry(credential: json['credential']);
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {'credential': credential};
+  }
+}
+
 class OidCredentialResponse extends JsonObject {
   dynamic credential;
+  // draft 15
+  List<OidCredentialResponseCredentialEntry>? credentials;
   String? transactionId,
       cNonce,
       notificationId,
@@ -1575,6 +1593,7 @@ class OidCredentialResponse extends JsonObject {
 
   OidCredentialResponse(
       {this.credential,
+      this.credentials,
       this.transactionId,
       this.cNonce,
       this.cNonceExpiresIn,
@@ -1584,6 +1603,9 @@ class OidCredentialResponse extends JsonObject {
   OidCredentialResponse.fromJson(dynamic jsonData) {
     var jsonObject = credentialToMap(jsonData);
     credential = jsonObject['credential'];
+    credentials = (jsonObject['credentials'] as List?)
+        ?.map((e) => OidCredentialResponseCredentialEntry.fromJson(e))
+        .toList();
     transactionId = jsonObject['transaction_id'];
     cNonce = jsonObject['c_nonce'];
     cNonceExpiresIn = jsonObject['c_nonce_expires_in'];
@@ -1599,6 +1621,9 @@ class OidCredentialResponse extends JsonObject {
     Map<String, dynamic> jsonObject = {};
     if (credential != null) {
       jsonObject['credential'] = credential;
+    }
+    if (credentials != null) {
+      jsonObject['credentials'] = credentials!.map((e) => e.toJson()).toList();
     }
     if (format != null) {
       jsonObject['format'] = format;
