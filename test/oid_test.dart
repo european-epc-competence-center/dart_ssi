@@ -801,6 +801,32 @@ void main() {
       expect(proof?.proofValue, proof2?.proofValue);
       expect(proof?.proofValue, isNotNull);
     });
+
+    test('draft 15', () {
+      var data = {
+        "credential_configuration_id": "org.iso.18013.5.1.mDL",
+        "proof": {
+          "proof_type": "jwt",
+          "jwt":
+              "eyJraWQiOiJkaWQ6ZXhhbXBsZTplYmZlYjFmNzEyZWJjNmYxYzI3NmUxMmVjMjEva2V5cy8xIiwiYWxnIjoiRVMyNTYiLCJ0eXAiOiJKV1QifQ"
+        }
+      };
+
+      var request = OidCredentialRequest.fromJson(data);
+      var request2 = OidCredentialRequest.fromJson(request.toJson());
+
+      expect(request.credentialConfigurationId,
+          request2.credentialConfigurationId);
+      expect(request2.credentialConfigurationId, 'org.iso.18013.5.1.mDL');
+
+      var proof = request.proof?.first;
+      var proof2 = request2.proof?.first;
+
+      expect(proof?.proofType, 'jwt');
+      expect(proof2?.proofType, 'jwt');
+      expect(proof?.proofValue, proof2?.proofValue);
+      expect(proof?.proofValue, isNotNull);
+    });
   });
 
   group('credential response', () {

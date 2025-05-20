@@ -1228,7 +1228,7 @@ class UrlData extends JsonObject {
 }
 
 class OidCredentialRequest extends JsonObject {
-  String? format, credentialIdentifier;
+  String? format, credentialIdentifier, credentialConfigurationId;
   Map<String, dynamic>? responseEncryptionJwk;
   String? responseEncryptionAlg, responseEncryptionEnc;
 
@@ -1245,6 +1245,7 @@ class OidCredentialRequest extends JsonObject {
   OidCredentialRequest(
       {this.format,
       this.credentialIdentifier,
+      this.credentialConfigurationId,
       this.proof,
       this.responseEncryptionAlg,
       this.responseEncryptionEnc,
@@ -1257,10 +1258,11 @@ class OidCredentialRequest extends JsonObject {
     var jsonObject = credentialToMap(data);
     // Parameters for every format
     String? format = jsonObject['format'],
-        credentialIdentifier = jsonObject['credential_identifier'];
-    if (format == null && credentialIdentifier == null) {
+        credentialIdentifier = jsonObject['credential_identifier'],
+        configId = jsonObject['credential_configuration_id'];
+    if (format == null && credentialIdentifier == null && configId == null) {
       throw Exception(
-          'Invalid Credential Request: format and credentialIdentifier null');
+          'Invalid Credential Request: format credential_configuration_id and credentialIdentifier null');
     }
     List<CredentialRequestProof>? proofs;
     if (jsonObject.containsKey('proof')) {
@@ -1302,6 +1304,7 @@ class OidCredentialRequest extends JsonObject {
 
       return OidCredentialRequest(
           format: format,
+          credentialConfigurationId: configId,
           context: context?.cast<String>(),
           credentialType: vcType?.cast<String>(),
           claims: subject,
@@ -1330,6 +1333,7 @@ class OidCredentialRequest extends JsonObject {
 
       return OidCredentialRequest(
           format: format,
+          credentialConfigurationId: configId,
           credentialType: vcType.cast<String>(),
           claims: subject,
           credentialIdentifier: credentialIdentifier,
@@ -1349,6 +1353,7 @@ class OidCredentialRequest extends JsonObject {
       return OidCredentialRequest(
           format: format,
           claims: claims,
+          credentialConfigurationId: configId,
           credentialType: doctype != null ? [doctype] : null,
           credentialIdentifier: credentialIdentifier,
           proof: proofs,
@@ -1365,6 +1370,7 @@ class OidCredentialRequest extends JsonObject {
       }
       return OidCredentialRequest(
           format: format,
+          credentialConfigurationId: configId,
           claims: claims,
           credentialType: [vct],
           credentialIdentifier: credentialIdentifier,
@@ -1376,6 +1382,7 @@ class OidCredentialRequest extends JsonObject {
     } else {
       return OidCredentialRequest(
           credentialIdentifier: credentialIdentifier,
+          credentialConfigurationId: configId,
           proof: proofs,
           responseEncryptionAlg: alg,
           responseEncryptionEnc: enc,
@@ -1389,6 +1396,9 @@ class OidCredentialRequest extends JsonObject {
     Map<String, dynamic> jsonObject = {};
     if (credentialIdentifier != null) {
       jsonObject['credential_identifier'] = credentialIdentifier;
+    }
+    if (credentialConfigurationId != null) {
+      jsonObject['credential_configuration_id'] = credentialConfigurationId;
     }
     if (format != null) {
       jsonObject['format'] = format;
