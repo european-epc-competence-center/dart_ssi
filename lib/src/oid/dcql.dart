@@ -540,7 +540,7 @@ Future<FilterResult> _findCredentialsForCredentialQuery(CredentialQuery query,
         if (meta.doctype != docType) continue;
       }
 
-      if (query.claims == null && query.claimSets != null) {
+      if (query.claims == null && query.claimSets == null) {
         candidates.add(cred);
       }
 
@@ -649,7 +649,7 @@ Future<FilterResult> _findCredentialsForCredentialQuery(CredentialQuery query,
       List<String> containingClaims = [];
       if (query.claims != null) {
         (isCandidate, containingClaims) =
-            _hasClaims(query.claims!, cred.toJson(), query.claimSets == null);
+            _hasClaims(query.claims!, cred.toJson(), query.claimSets != null);
       }
       if (query.claimSets != null) {
         if (containingClaims.isNotEmpty) {
@@ -690,6 +690,7 @@ Future<FilterResult> _findCredentialsForCredentialQuery(CredentialQuery query,
   List<String> matches = [];
   bool match = true;
   for (var q in query) {
+    print(query);
     if (hasSet && q.id == null) {
       throw Exception(
           'Malformed query: If claim_sets is present, every claims query must have an id parameter');

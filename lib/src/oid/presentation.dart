@@ -177,3 +177,357 @@ class ClientMetaData extends JsonObject {
     return json;
   }
 }
+
+class VpFormats extends JsonObject {
+  VpFormatLdp? ldp;
+  VpFormatSdJwt? sdJwt;
+  VpFormatMsoMdoc? msoMdoc;
+  VpFormatJwtVcJson? jwtVcJson;
+  VpFormatJwtVcJson? jwtVcJsonLd;
+
+  VpFormats(
+      {this.ldp, this.sdJwt, this.msoMdoc, this.jwtVcJson, this.jwtVcJsonLd});
+
+  factory VpFormats.fromJson(dynamic jsonData) {
+    var json = credentialToMap(jsonData);
+    return VpFormats(
+        sdJwt: json.containsKey(OidCredentialFormat.sdJwtDc)
+            ? VpFormatSdJwt.fromJson(json[OidCredentialFormat.sdJwtDc])
+            : json.containsKey(OidCredentialFormat.sdJwt)
+                ? VpFormatSdJwt.fromJson(json[OidCredentialFormat.sdJwt])
+                : null,
+        msoMdoc: json.containsKey(OidCredentialFormat.msoMdoc)
+            ? VpFormatMsoMdoc.fromJson(json[OidCredentialFormat.msoMdoc])
+            : null,
+        jwtVcJson: json.containsKey(OidCredentialFormat.jwtVcJson)
+            ? VpFormatJwtVcJson.fromJson(json[OidCredentialFormat.jwtVcJson])
+            : null,
+        jwtVcJsonLd: json.containsKey(OidCredentialFormat.jwtVcJsonLd)
+            ? VpFormatJwtVcJson.fromJson(json[OidCredentialFormat.jwtVcJsonLd])
+            : null,
+        ldp: json.containsKey(OidCredentialFormat.ldpVc)
+            ? VpFormatLdp.fromJson(json[OidCredentialFormat.ldpVc])
+            : null);
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      if (ldp != null) OidCredentialFormat.ldpVc: ldp!.toJson(),
+      if (sdJwt != null) OidCredentialFormat.sdJwtDc: sdJwt!.toJson(),
+      if (msoMdoc != null) OidCredentialFormat.msoMdoc: msoMdoc!.toJson(),
+      if (jwtVcJson != null) OidCredentialFormat.jwtVcJson: jwtVcJson!.toJson(),
+      if (jwtVcJsonLd != null)
+        OidCredentialFormat.jwtVcJsonLd: jwtVcJsonLd!.toJson()
+    };
+  }
+}
+
+class VpFormatJwtVcJson extends JsonObject {
+  List<String>? algValues;
+
+  VpFormatJwtVcJson({this.algValues});
+
+  factory VpFormatJwtVcJson.fromJson(dynamic jsonData) {
+    var json = credentialToMap(jsonData);
+
+    return VpFormatJwtVcJson(
+        algValues: (json['alg_values'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList());
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{if (algValues != null) 'alg_values': algValues};
+  }
+}
+
+class VpFormatLdp extends JsonObject {
+  List<String>? proofTypeValues;
+  List<String>? cryptosuiteValues;
+
+  VpFormatLdp({this.proofTypeValues, this.cryptosuiteValues});
+
+  factory VpFormatLdp.fromJson(dynamic jsonData) {
+    var json = credentialToMap(jsonData);
+    return VpFormatLdp(
+        proofTypeValues: (json['proof_type_values'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList(),
+        cryptosuiteValues: (json['cryptosuite_values'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList());
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      if (proofTypeValues != null) 'proof_type_values': proofTypeValues,
+      if (cryptosuiteValues != null) 'cryptosuite_values': cryptosuiteValues
+    };
+  }
+}
+
+class VpFormatMsoMdoc extends JsonObject {
+  List<int>? issuerAuthAlgValues;
+  List<int>? deviceAuthAlgValues;
+
+  VpFormatMsoMdoc({this.issuerAuthAlgValues, this.deviceAuthAlgValues});
+
+  factory VpFormatMsoMdoc.fromJson(dynamic jsonData) {
+    var json = credentialToMap(jsonData);
+    return VpFormatMsoMdoc(
+        issuerAuthAlgValues: (json['issuerauth_alg_values'] as List<dynamic>?)
+            ?.map((e) => e as int)
+            .toList(),
+        deviceAuthAlgValues: (json['deviceauth_alg_values'] as List<dynamic>?)
+            ?.map((e) => e as int)
+            .toList());
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      if (issuerAuthAlgValues != null)
+        'issuerauth_alg_values': issuerAuthAlgValues,
+      if (deviceAuthAlgValues != null)
+        'deviceauth_alg_values': deviceAuthAlgValues
+    };
+  }
+}
+
+class VpFormatSdJwt extends JsonObject {
+  List<String>? sdJwtAlgValues;
+  List<String>? kbJwtAlgValues;
+
+  VpFormatSdJwt({this.sdJwtAlgValues, this.kbJwtAlgValues});
+
+  factory VpFormatSdJwt.fromJson(dynamic jsonData) {
+    var json = credentialToMap(jsonData);
+    return VpFormatSdJwt(
+        sdJwtAlgValues: (json['sd-jwt_alg_values'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList(),
+        kbJwtAlgValues: (json['kb-jwt_alg_values'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList());
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      if (sdJwtAlgValues != null) 'sd-jwt_alg_values': sdJwtAlgValues,
+      if (kbJwtAlgValues != null) 'kb-jwt_alg_values': kbJwtAlgValues
+    };
+  }
+}
+
+class AuthorizationServerMetadata extends JsonObject {
+  // Basic parameters from RFC 8414
+  final String? issuer;
+  final String? authorizationEndpoint;
+  final String? tokenEndpoint;
+  final String? jwksUri;
+  final String? registrationEndpoint;
+  final List<String>? scopesSupported;
+  final List<String>? responseTypesSupported;
+  final List<String>? responseModesSupported;
+  final List<String>? grantTypesSupported;
+  final List<String>? tokenEndpointAuthMethodsSupported;
+  final List<String>? tokenEndpointAuthSigningAlgValuesSupported;
+  final String? serviceDocumentation;
+  final List<String>? uiLocalesSupported;
+  final String? opPolicyUri;
+  final String? opTosUri;
+  final String? revocationEndpoint;
+  final List<String>? revocationEndpointAuthMethodsSupported;
+  final List<String>? revocationEndpointAuthSigningAlgValuesSupported;
+  final String? introspectionEndpoint;
+  final List<String>? introspectionEndpointAuthMethodsSupported;
+  final List<String>? introspectionEndpointAuthSigningAlgValuesSupported;
+  final List<String>? codeChallengeMethodsSupported;
+  // Additional parameters from rfc 9126 Pushed Authorization Request
+  final String? pushedAuthorizationRequestEndpoint;
+  final bool? requirePushedAuthorizationRequests;
+  // Additional parameters from Oid4VP
+  final VpFormats? vpFormatsSupported;
+  final List<String>? clientIdPrefixesSupported;
+
+  AuthorizationServerMetadata({
+    this.issuer,
+    this.authorizationEndpoint,
+    this.tokenEndpoint,
+    this.jwksUri,
+    this.registrationEndpoint,
+    this.scopesSupported,
+    this.responseTypesSupported,
+    this.responseModesSupported,
+    this.grantTypesSupported,
+    this.tokenEndpointAuthMethodsSupported,
+    this.tokenEndpointAuthSigningAlgValuesSupported,
+    this.serviceDocumentation,
+    this.uiLocalesSupported,
+    this.opPolicyUri,
+    this.opTosUri,
+    this.revocationEndpoint,
+    this.revocationEndpointAuthMethodsSupported,
+    this.revocationEndpointAuthSigningAlgValuesSupported,
+    this.introspectionEndpoint,
+    this.introspectionEndpointAuthMethodsSupported,
+    this.introspectionEndpointAuthSigningAlgValuesSupported,
+    this.codeChallengeMethodsSupported,
+    this.pushedAuthorizationRequestEndpoint,
+    this.requirePushedAuthorizationRequests,
+    this.vpFormatsSupported,
+    this.clientIdPrefixesSupported,
+  });
+
+  factory AuthorizationServerMetadata.fromJson(dynamic data) {
+    var json = credentialToMap(data);
+    return AuthorizationServerMetadata(
+      issuer: json['issuer'] as String,
+      authorizationEndpoint: json['authorization_endpoint'] as String,
+      tokenEndpoint: json['token_endpoint'] as String,
+      jwksUri: json['jwks_uri'] as String,
+      registrationEndpoint: json['registration_endpoint'] as String?,
+      scopesSupported: (json['scopes_supported'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
+      responseTypesSupported:
+          (json['response_types_supported'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
+      responseModesSupported:
+          (json['response_modes_supported'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
+      grantTypesSupported: (json['grant_types_supported'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
+      tokenEndpointAuthMethodsSupported:
+          (json['token_endpoint_auth_methods_supported'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
+      tokenEndpointAuthSigningAlgValuesSupported:
+          (json['token_endpoint_auth_signing_alg_values_supported']
+                  as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
+      serviceDocumentation: json['service_documentation'],
+      uiLocalesSupported: (json['ui_locales_supported'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList(),
+      opPolicyUri: json['op_policy_uri'],
+      opTosUri: json['op_tos_uri'],
+      revocationEndpoint: json['revocation_endpoint'],
+      revocationEndpointAuthMethodsSupported:
+          (json['revocation_endpoint_auth_methods_supported'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
+      revocationEndpointAuthSigningAlgValuesSupported:
+          (json['revocation_endpoint_auth_signing_alg_values_supported']
+                  as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
+      introspectionEndpoint: json['introspection_endpoint'],
+      introspectionEndpointAuthMethodsSupported:
+          (json['introspection_endpoint_auth_methods_supported']
+                  as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
+      introspectionEndpointAuthSigningAlgValuesSupported:
+          (json['introspection_endpoint_auth_signing_alg_values_supported']
+                  as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
+      codeChallengeMethodsSupported:
+          (json['code_challenge_methods_supported'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
+      pushedAuthorizationRequestEndpoint:
+          json['pushed_authorization_request_endpoint'],
+      requirePushedAuthorizationRequests:
+          json['require_pushed_authorization_requests'],
+      vpFormatsSupported: json.containsKey('vp_formats_supported')
+          ? VpFormats.fromJson(json['vp_formats_supported'])
+          : null,
+      clientIdPrefixesSupported:
+          (json['client_id_prefixes_supported'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList(),
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      if (issuer != null) 'issuer': issuer,
+      if (authorizationEndpoint != null)
+        'authorization_endpoint': authorizationEndpoint,
+      if (tokenEndpoint != null) 'token_endpoint': tokenEndpoint,
+      if (jwksUri != null) 'jwks_uri': jwksUri,
+      if (registrationEndpoint != null)
+        'registration_endpoint': registrationEndpoint,
+      if (scopesSupported != null) 'scopes_supported': scopesSupported,
+      if (responseTypesSupported != null)
+        'response_types_supported': responseTypesSupported,
+      if (responseModesSupported != null)
+        'response_modes_supported': responseModesSupported,
+      if (grantTypesSupported != null)
+        'grant_types_supported': grantTypesSupported,
+      if (tokenEndpointAuthMethodsSupported != null)
+        'token_endpoint_auth_methods_supported':
+            tokenEndpointAuthMethodsSupported,
+      if (tokenEndpointAuthSigningAlgValuesSupported != null)
+        'token_endpoint_auth_signing_alg_values_supported':
+            tokenEndpointAuthSigningAlgValuesSupported,
+      if (serviceDocumentation != null)
+        'service_documentation': serviceDocumentation,
+      if (uiLocalesSupported != null)
+        'ui_locales_supported': uiLocalesSupported,
+      if (opPolicyUri != null) 'op_policy_uri': opPolicyUri,
+      if (opTosUri != null) 'op_tos_uri': opTosUri,
+      if (revocationEndpoint != null) 'revocation_endpoint': revocationEndpoint,
+      if (revocationEndpointAuthMethodsSupported != null)
+        'revocation_endpoint_auth_methods_supported':
+            revocationEndpointAuthMethodsSupported,
+      if (revocationEndpointAuthSigningAlgValuesSupported != null)
+        'revocation_endpoint_auth_signing_alg_values_supported':
+            revocationEndpointAuthSigningAlgValuesSupported,
+      if (introspectionEndpoint != null)
+        'introspection_endpoint': introspectionEndpoint,
+      if (introspectionEndpointAuthMethodsSupported != null)
+        'introspection_endpoint_auth_methods_supported':
+            introspectionEndpointAuthMethodsSupported,
+      if (introspectionEndpointAuthSigningAlgValuesSupported != null)
+        'introspection_endpoint_auth_signing_alg_values_supported':
+            introspectionEndpointAuthSigningAlgValuesSupported,
+      if (codeChallengeMethodsSupported != null)
+        'code_challenge_methods_supported': codeChallengeMethodsSupported,
+      if (pushedAuthorizationRequestEndpoint != null)
+        'pushed_authorization_request_endpoint':
+            pushedAuthorizationRequestEndpoint,
+      if (requirePushedAuthorizationRequests != null)
+        'require_pushed_authorization_requests':
+            requirePushedAuthorizationRequests,
+      if (vpFormatsSupported != null)
+        'vp_formats_supported': vpFormatsSupported!.toJson(),
+      if (clientIdPrefixesSupported != null)
+        'client_id_prefixes_supported': clientIdPrefixesSupported
+    };
+  }
+
+  String toUrlEncodedString() {
+    final Map<String, dynamic> json = toJson();
+    return json.entries.map((entry) {
+      final key = Uri.encodeQueryComponent(entry.key);
+      final value = entry.value is List
+          ? (entry.value as List)
+              .map((v) => Uri.encodeQueryComponent(v.toString()))
+              .join(',')
+          : Uri.encodeQueryComponent(entry.value.toString());
+      return '$key=$value';
+    }).join('&');
+  }
+}

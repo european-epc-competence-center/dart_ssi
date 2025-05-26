@@ -1293,15 +1293,42 @@ FilterResult _processInputDescriptor(
         localFormat.ldpVc != null) {
       if (credentials != null && credentials.isNotEmpty) {
         candidateW3C = _filterW3cVc(descriptor, credentials, localFormat);
+      } else {
+        return FilterResult(
+          selfIssuable: descriptor.constraints?.subjectIsIssuer != null
+              ? [descriptor.constraints!]
+              : null,
+          fulfilled: false,
+          matchingDescriptorIds: [descriptor.id],
+          presentationDefinitionId: definitionId,
+        );
       }
-    } else if (localFormat.mdocFormat != null &&
-        isoMdocCredentials != null &&
-        isoMdocCredentials.isNotEmpty) {
-      candidateIso = _filterMdocCredentials(descriptor, isoMdocCredentials);
-    } else if (localFormat.sdJwtVcFormat != null &&
-        sdJwtCredentials != null &&
-        sdJwtCredentials.isNotEmpty) {
-      candidateSdJwt = _filterSdJwt(descriptor, sdJwtCredentials);
+    } else if (localFormat.mdocFormat != null) {
+      if (isoMdocCredentials != null && isoMdocCredentials.isNotEmpty) {
+        candidateIso = _filterMdocCredentials(descriptor, isoMdocCredentials);
+      } else {
+        return FilterResult(
+          selfIssuable: descriptor.constraints?.subjectIsIssuer != null
+              ? [descriptor.constraints!]
+              : null,
+          fulfilled: false,
+          matchingDescriptorIds: [descriptor.id],
+          presentationDefinitionId: definitionId,
+        );
+      }
+    } else if (localFormat.sdJwtVcFormat != null) {
+      if (sdJwtCredentials != null && sdJwtCredentials.isNotEmpty) {
+        candidateSdJwt = _filterSdJwt(descriptor, sdJwtCredentials);
+      } else {
+        return FilterResult(
+          selfIssuable: descriptor.constraints?.subjectIsIssuer != null
+              ? [descriptor.constraints!]
+              : null,
+          fulfilled: false,
+          matchingDescriptorIds: [descriptor.id],
+          presentationDefinitionId: definitionId,
+        );
+      }
     } else {
       throw Exception('unsupported Format');
     }
