@@ -986,8 +986,8 @@ class CredentialsSupportedObject extends JsonObject {
           proofTypesSupported: pt,
           scope: scope,
           format: format,
-          context: context?.cast<String>(),
-          credentialType: type?.cast<String>());
+          context: context!.cast<String>(),
+          credentialType: type!.cast<String>());
     } else if (format == OidCredentialFormat.jwtVcJson) {
       Map<String, dynamic>? claims;
       List<ClaimsDescriptionObject>? cd;
@@ -1363,7 +1363,7 @@ class OidCredentialRequest extends JsonObject {
               jwk?.map((key, value) => MapEntry(key as String, value)));
     } else if (format == OidCredentialFormat.sdJwt ||
         format == OidCredentialFormat.sdJwtDc) {
-      String vct = jsonObject['vct'];
+      String? vct = jsonObject['vct'];
       Map<String, dynamic>? claims;
       if (jsonObject.containsKey('claims')) {
         claims = _parseStuff(jsonObject['claims']);
@@ -1372,7 +1372,7 @@ class OidCredentialRequest extends JsonObject {
           format: format,
           credentialConfigurationId: configId,
           claims: claims,
-          credentialType: [vct],
+          credentialType: vct != null ? [vct] : null,
           credentialIdentifier: credentialIdentifier,
           proof: proofs,
           responseEncryptionAlg: alg,
