@@ -86,14 +86,15 @@ class RequestObject extends JsonObject {
       jsonObject['presentation_definition_uri'] = presentationDefinitionUri;
     }
     if (presentationDefinition != null) {
-      jsonObject['presentation_definition'] = presentationDefinition!.toJson();
+      jsonObject['presentation_definition'] =
+          presentationDefinition!.toString();
     }
     if (dcqlQuery != null) {
       jsonObject['dcql_query'] = dcqlQuery!.toString();
     }
 
     if (clientMetaData != null) {
-      jsonObject['client_metadata'] = clientMetaData!.toJson();
+      jsonObject['client_metadata'] = clientMetaData!.toString();
     }
     if (clientMetaDataUri != null) {
       jsonObject['client_metadata_uri'] = clientMetaDataUri;
@@ -108,11 +109,12 @@ class ClientMetaData extends JsonObject {
   String? authEncryptedResponseAlg,
       authEncryptedResponseEnc,
       authSignedResponseAlg;
-  FormatProperty? vpFormats;
+  VpFormats? vpFormats;
 
   ClientMetaData(
       {this.jwks,
       this.jwksUri,
+      this.vpFormats,
       this.authEncryptedResponseAlg,
       this.authEncryptedResponseEnc,
       this.authSignedResponseAlg});
@@ -146,7 +148,7 @@ class ClientMetaData extends JsonObject {
     }
 
     if (jsonData.containsKey('vp_formats')) {
-      vpFormats = FormatProperty.fromJson(jsonData['vp_formats']);
+      vpFormats = VpFormats.fromJson(jsonData['vp_formats_supported']);
     }
   }
   @override
@@ -171,7 +173,7 @@ class ClientMetaData extends JsonObject {
     }
 
     if (vpFormats != null) {
-      json['vp_formats'] = vpFormats!.toJson();
+      json['vp_formats_supported'] = vpFormats!.toJson();
     }
 
     return json;
