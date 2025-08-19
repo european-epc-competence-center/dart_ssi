@@ -71,6 +71,7 @@ class ClaimPathPointer {
   /// Array stuff is not supported
   void setValueAtPath(dynamic value, Map<String, dynamic> json) {
     dynamic data = json;
+
     for (int i = 0; i < pointer.length; i++) {
       var p = pointer[i];
       if (!data.containsKey(p)) {
@@ -81,6 +82,9 @@ class ClaimPathPointer {
         return;
       }
       data = data[p];
+      if (data is! Map) {
+        data = {};
+      }
     }
   }
 
