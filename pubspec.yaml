@@ -25,7 +25,7 @@ dependencies:
     git:
       url: https://github.com/b2cm/iso_mdoc
       ref: main
-    #path: ../cbor_test
+#    path: ../cbor_test
   sd_jwt: #^1.0.0
   # path: ../sd-jwt
     git:

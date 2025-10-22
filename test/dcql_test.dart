@@ -214,6 +214,74 @@ void main() {
       expect(c1.toSdJwt().additionalClaims?.keys.length,
           sdJwt2.toSdJwt().additionalClaims?.length);
     });
+    test('presentationDefinition, and combination', () {
+      var definition = {
+        "id": "example_sd_jwt_vc_request",
+        "input_descriptors": [
+          {
+            "id": "identity_credential_1",
+            "group": ["A"],
+            "constraints": {
+              "fields": [
+                {
+                  "path": [r"$.type"],
+                  "filter": {
+                    "type": "array",
+                    "contains": {'type': 'string', 'const': 'TestVc2'}
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "id": "identity_credential_2",
+            "group": ["A"],
+            "constraints": {
+              "fields": [
+                {
+                  "path": [r"$.type"],
+                  "filter": {
+                    "type": "array",
+                    "contains": {'type': 'string', 'const': 'TestVc3'}
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "submission_requirements": [
+          {"from": 'A', 'rule': 'all'}
+        ]
+      };
+
+      var result = searchCredentialsForPresentationDefinition(
+          PresentationDefinition.fromJson(definition),
+          credentials: [w3cVc1, w3cVc2, w3cVc3],
+          sdJwtCredentials: [sdJwt1, sdJwt2],
+          isoMdocCredentials: [msoVc1, msoVc2]);
+
+      expect(result.length, 1);
+
+      var f1 = result.first;
+      expect(f1.fulfilled, isTrue);
+      expect(f1.sdJwtCredentials, null);
+      expect(f1.credentials?.length, 2);
+      expect(f1.isoMdocCredentials, null);
+      expect(f1.nestedResults, null);
+      expect(
+          f1.matchingDescriptorIds.contains('identity_credential_1'), isTrue);
+      expect(f1.matchingDescriptorIds.length, 2);
+
+      // var f2 = result[1];
+      // expect(f2.fulfilled, isTrue);
+      // expect(f2.sdJwtCredentials, null);
+      // expect(f2.credentials?.length, 1);
+      // expect(f2.isoMdocCredentials, null);
+      // expect(f2.nestedResults, null);
+      // expect(
+      //     f2.matchingDescriptorIds.contains('identity_credential_2'), isTrue);
+      // expect(f2.matchingDescriptorIds.length, 1);
+    });
     test('presentationDefinition, mso_mdoc', () {
       var definition = {
         "id": "example_sd_jwt_vc_request",

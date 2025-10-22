@@ -148,6 +148,10 @@ class ClientMetaData extends JsonObject {
     }
 
     if (jsonData.containsKey('vp_formats')) {
+      vpFormats = VpFormats.fromJson(jsonData['vp_formats']);
+    }
+
+    if (jsonData.containsKey('vp_formats_supported')) {
       vpFormats = VpFormats.fromJson(jsonData['vp_formats_supported']);
     }
   }

@@ -880,6 +880,26 @@ void main() {
       expect(response.cNonce, response2.cNonce);
     });
 
+    test('draft 14 normal', () {
+      var data = {
+        "credentials": [
+          "LUpixVCWJk0eOt4CXQe1NXK....WZwmhmn9OQp6YxX0a2L",
+          "YXNkZnNhZGZkamZqZGFza23....29tZTIzMjMyMzIzMjMy"
+        ],
+        "c_nonce": "fGFF7UkhLa",
+        "c_nonce_expires_in": 86400
+      };
+
+      var response = OidCredentialResponse.fromJson(data);
+      var response2 = OidCredentialResponse.fromJson(response.toJson());
+      print(response);
+
+      expect(response.credentials?.length, response2.credentials?.length);
+      expect(response.credentials?.length, 2);
+      expect(response2.cNonce, response.cNonce);
+      expect(response.cNonce, 'fGFF7UkhLa');
+    });
+
     test('draft 15 normal', () {
       var data = {
         "credentials": [

@@ -1568,9 +1568,18 @@ class OidCredentialResponseCredentialEntry extends JsonObject {
   OidCredentialResponseCredentialEntry({this.credential});
 
   factory OidCredentialResponseCredentialEntry.fromJson(dynamic jsonData) {
-    var json = credentialToMap(jsonData);
-
-    return OidCredentialResponseCredentialEntry(credential: json['credential']);
+    if (jsonData is String) {
+      return OidCredentialResponseCredentialEntry(credential: jsonData);
+    } else if (jsonData is Map) {
+      if (jsonData.containsKey('credential')) {
+        return OidCredentialResponseCredentialEntry(
+            credential: jsonData['credential']);
+      } else {
+        return OidCredentialResponseCredentialEntry(credential: jsonData);
+      }
+    } else {
+      throw Exception('unsupported format');
+    }
   }
 
   @override
@@ -1602,13 +1611,14 @@ class OidCredentialResponse extends JsonObject {
 
   OidCredentialResponse.fromJson(dynamic jsonData) {
     var jsonObject = credentialToMap(jsonData);
+    var cNonceExpiresTmp = jsonObject['c_nonce_expires_in'];
     credential = jsonObject['credential'];
     credentials = (jsonObject['credentials'] as List?)
         ?.map((e) => OidCredentialResponseCredentialEntry.fromJson(e))
         .toList();
     transactionId = jsonObject['transaction_id'];
     cNonce = jsonObject['c_nonce'];
-    cNonceExpiresIn = jsonObject['c_nonce_expires_in'];
+    cNonceExpiresIn = cNonceExpiresTmp is int? ? cNonceExpiresTmp : null;
     notificationId = jsonObject['notification_id'];
     format = jsonObject['format'];
     if (jsonObject.containsKey('acceptance_token')) {
