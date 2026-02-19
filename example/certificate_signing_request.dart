@@ -5,9 +5,8 @@ import 'package:dart_ssi/wallet.dart';
 
 void main() async {
   var wallet = WalletStore('testCsr');
-  await wallet.openBoxes('pwd');
-  await wallet.initialize();
-  await wallet.initializeIssuer(KeyType.ed25519);
+  await wallet.openBoxes(password: 'pwd');
+  await wallet.initializeIssuer(keyType: KeyType.ed25519);
 
   //generate Did
   var did = wallet.getStandardIssuerDid(KeyType.ed25519);

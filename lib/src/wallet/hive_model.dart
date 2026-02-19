@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:hive/hive.dart';
 
 part 'hive_model.g.dart';
@@ -11,17 +13,31 @@ class Credential {
 
   /// Signed version according to W3C-Data Model with all attribute values hashed.
   @HiveField(1)
-  String w3cCredential;
+  String verifiableCredential;
 
   /// Json-Structure containing hash, salt and value per attribute.
   @HiveField(2)
-  String plaintextCredential;
+  String metadata;
 
-  Credential(this.hdPath, this.w3cCredential, this.plaintextCredential);
+  Credential(this.verifiableCredential, this.metadata, this.hdPath);
+
+  /// Create a Credential object from a JSON map
+  factory Credential.fromJson(Map<String, dynamic> json) {
+    return Credential(json['verifiableCredential'] as String,
+        json['metadata'] as String, json['hdPath'] ?? '');
+  }
+
+  /// Convert a Credential object to a JSON-encodable Map
+  Map<String, dynamic> toJson() {
+    return {
+      'verifiableCredential': verifiableCredential,
+      'metadata': metadata,
+      'hdPath': hdPath
+    };
+  }
 
   @override
-  String toString() =>
-      '$w3cCredential uses Path $hdPath an has this data: $plaintextCredential';
+  String toString() => jsonEncode(toJson());
 }
 
 @HiveType(typeId: 1)
@@ -36,11 +52,29 @@ class Connection {
   @HiveField(1)
   String otherDid;
 
-  /// A nma efor this connection.
+  /// A name for this connection.
   @HiveField(2)
   String name;
 
   Connection(this.hdPath, this.otherDid, this.name);
+
+  /// Create a Connection object from a JSON map
+  factory Connection.fromJson(Map<String, dynamic> json) {
+    return Connection(
+      json['hdPath'] as String,
+      json['otherDid'] as String,
+      json['name'] as String,
+    );
+  }
+
+  /// Convert a Connection object to a JSON-encodable Map
+  Map<String, dynamic> toJson() {
+    return {
+      'hdPath': hdPath,
+      'otherDid': otherDid,
+      'name': name,
+    };
+  }
 
   @override
   String toString() =>
@@ -67,6 +101,27 @@ class ExchangeHistoryEntry {
   ExchangeHistoryEntry(
       this.timestamp, this.action, this.otherParty, this.shownAttributes);
 
+  /// Create an ExchangeHistoryEntry object from a JSON map
+  factory ExchangeHistoryEntry.fromJson(Map<String, dynamic> json) {
+    return ExchangeHistoryEntry(
+      DateTime.parse(json['timestamp']), // Convert string back to DateTime
+      json['action'] as String,
+      json['otherParty'] as String,
+      List<String>.from(
+          json['shownAttributes']), // Ensure shownAttributes is a List<String>
+    );
+  }
+
+  /// Convert an ExchangeHistoryEntry object to a JSON-encodable Map
+  Map<String, dynamic> toJson() {
+    return {
+      'timestamp': timestamp.toIso8601String(), // Convert DateTime to string
+      'action': action,
+      'otherParty': otherParty,
+      'shownAttributes': shownAttributes,
+    };
+  }
+
   @override
   String toString() {
     return 'ExchangeHistoryEntry{timestamp: $timestamp, action: $action, otherParty: $otherParty, shownAttributes: $shownAttributes}';
@@ -86,6 +141,24 @@ class DidcommConversation {
   String myDid;
 
   DidcommConversation(this.lastMessage, this.protocol, this.myDid);
+
+  /// Create a Connection object from a JSON map
+  factory DidcommConversation.fromJson(Map<String, dynamic> json) {
+    return DidcommConversation(
+      json['lastMessage'] as String,
+      json['protocol'] as String,
+      json['myDid'] as String,
+    );
+  }
+
+  /// Convert a Connection object to a JSON-encodable Map
+  Map<String, dynamic> toJson() {
+    return {
+      'lastMessage': lastMessage,
+      'protocol': protocol,
+      'myDid': myDid,
+    };
+  }
 
   @override
   String toString() {

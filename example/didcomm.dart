@@ -28,18 +28,16 @@ import 'package:uuid/uuid.dart';
 
 void main() async {
   var alice = WalletStore('exampleData/didcomm/alice');
-  await alice.openBoxes('alicePassword');
-  await alice.initialize();
+  await alice.openBoxes(password: 'alicePassword');
   await _issueStudentCard(alice);
 
   var museum = WalletStore('exampleData/didcomm/museum');
-  await museum.openBoxes('museumPassword');
-  await museum.initialize();
-  await museum.initializeIssuer(KeyType.ed25519);
+  await museum.openBoxes(password: 'museumPassword');
+  await museum.initializeIssuer(keyType: KeyType.ed25519);
   await _issueBusinessId(museum);
 
   // ****** Museum ********
-  var museumDid = await museum.getNextConnectionDID(KeyType.x25519);
+  var museumDid = await museum.generateNewKey(keyType: KeyType.x25519);
   var presentationDefinition =
       PresentationDefinition(id: Uuid().v4(), inputDescriptors: [
     InputDescriptor(
@@ -93,37 +91,42 @@ void main() async {
   var allCreds = alice.getAllCredentials();
   List<VerifiableCredential> allW3CCreds = [];
   for (var cred in allCreds.values) {
-    if (cred.w3cCredential != '') {
-      allW3CCreds.add(VerifiableCredential.fromJson(cred.w3cCredential));
+    if (cred.verifiableCredential != '') {
+      allW3CCreds.add(VerifiableCredential.fromJson(cred.verifiableCredential));
     }
   }
   var searchResult = searchCredentialsForPresentationDefinition(
-      allW3CCreds, request.presentationDefinition[0].presentationDefinition);
+      request.presentationDefinition[0].presentationDefinition,
+      credentials: allW3CCreds);
 
   //Alice realize, that she should show her Student card and build verifiable Presentation out of it
-  var presentation = await buildPresentation(
-      searchResult, alice, request.presentationDefinition[0].challenge);
+  var presentation = VerifiablePresentation.fromFilterResults(searchResult);
+  for (var c in presentation.verifiableCredential!) {
+    var did = c.credentialSubject['id'] as String;
+    await presentation.addProof(
+        WalletCredentialSigner(
+            alice, did, 'EdDSA', '$did#${did.split(':').last}'),
+        LdpProofType.ed25519Signature2020,
+        challenge: request.presentationDefinition[0].challenge);
+  }
   print(presentation);
   //Now she puts this in a Presentation Message
-  var presentationMessage = Presentation(
-      verifiablePresentation: [VerifiablePresentation.fromJson(presentation)]);
+  var presentationMessage =
+      Presentation(verifiablePresentation: [presentation]);
   //alice generates a did she encrypts the message with
-  var connectionDidAlice = await alice.getNextConnectionDID(KeyType.x25519);
-  var privateKey =
-      await alice.getPrivateKeyForConnectionDidAsJwk(connectionDidAlice);
-  var encryptedMessage = DidcommEncryptedMessage.fromPlaintext(
-      keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES,
-      senderPrivateKeyJwk: privateKey!,
+  var connectionDidAlice = await alice.generateNewKey(keyType: KeyType.x25519);
+  var encryptedMessage = await presentationMessage.encrypt(
       recipientPublicKeyJwk: [ddoMuseum.keyAgreement![0].publicKeyJwk],
-      plaintext: presentationMessage);
+      wallet: alice,
+      keyId: connectionDidAlice,
+      keyWrapAlgorithm: KeyWrapAlgorithm.ecdhES);
+
   //This message she could send to the museum
 
   //***** Museum *******
 
   //The museum receives the Message. Because its anoncrypted, the museum could encrypt it without looking up a did-Document
-  var museumPrivateKey =
-      await museum.getPrivateKeyForConnectionDidAsJwk(museumDid);
-  var decrypted = await encryptedMessage.decrypt(museum);
+  var decrypted = await encryptedMessage.decrypt(wallet: museum);
 
   //To send message back, the museum looks for the sender in protected Header skid value
   Map<String, dynamic> decodedHeader = jsonDecode(utf8.decode(
@@ -143,16 +146,20 @@ void main() async {
   var presentationMessageReceived = Presentation.fromJson(decrypted.toJson());
 
   //verifyPresentation
-  var verified = await verifyPresentation(
-      presentationMessageReceived.verifiablePresentation[0].toJson(),
-      requestPresentationStudentCard.presentationDefinition[0].challenge);
+  var verified = await presentationMessageReceived.verifiablePresentation.first
+      .verify(
+          expectedChallenge: requestPresentationStudentCard
+              .presentationDefinition.first.challenge);
   if (!verified) throw Exception('Presentation could not been verified');
 
   //check if the credential inside matches the presentation Definition
-  var result = searchCredentialsForPresentationDefinition([
-    presentationMessageReceived
-        .verifiablePresentation[0].verifiableCredential![0]
-  ], presentationDefinition);
+  var result = searchCredentialsForPresentationDefinition(
+    presentationDefinition,
+    credentials: [
+      presentationMessageReceived
+          .verifiablePresentation[0].verifiableCredential![0]
+    ],
+  );
   if (result.length != 1) throw Exception('Credential dont match definition');
 
   //Now the Museum could start the issuance process for the annual ticket
@@ -162,68 +169,60 @@ void main() async {
     'institution': 'Museum of modern Art',
     'ticketType': 'Discounted Annual Ticket'
   };
-  var offer = OfferCredential(detail: [
+  var offer = OfferCredential(from: museumDid, detail: [
     LdProofVcDetail(
         credential: VerifiableCredential(
-            context: [
-              'https://www.w3.org/2018/credentials/v1',
-              'https://www.example.com/annualTicket/v1'
-            ],
-            type: [
-              'VerifiableCredential',
-              'AnnualTicket'
-            ],
+            context: ['https://www.w3.org/2018/credentials/v1', schemaOrgIri],
+            type: ['VerifiableCredential', 'AnnualTicket'],
             credentialSubject: credentialSubject,
             issuanceDate: DateTime.now(),
             issuer: museumIssuerDid),
         options: LdProofVcDetailOptions(proofType: 'Ed25519Signature2020'))
   ]);
 
-  var encryptedOffer = DidcommEncryptedMessage.fromPlaintext(
-      senderPrivateKeyJwk: museumPrivateKey!,
+  var encryptedOffer = await offer.encrypt(
       recipientPublicKeyJwk: [senderDDO.keyAgreement![0].publicKeyJwk],
-      plaintext: offer);
+      wallet: museum,
+      keyId: museumDid);
 
   //This authcrypted Message is sent to alice
 
   //**** Alice *******
   //Alice decrypts the message (she know, that it is from the museum)
-  var decryptedOffer = encryptedOffer.decryptWithJwk(
-      privateKey, ddoMuseum.keyAgreement![0].publicKeyJwk);
+  var decryptedOffer = await encryptedOffer.decrypt(
+      wallet: alice,
+      senderPublicKeyJwk: ddoMuseum.keyAgreement![0].publicKeyJwk);
 
-  //Here aswell we know that it is plaintext Message and has a type of offer-credential
+  //Here as well we know that it is plaintext Message and has a type of offer-credential
   var receivedOffer = OfferCredential.fromJson(decryptedOffer.toJson());
   //Alice checks, if the did the credential should issued to is controlled by her
   var did = receivedOffer.detail![0].credential.credentialSubject['id'];
   print(did);
-  String? key;
-  try {
-    key = await alice.getPrivateKeyForCredentialDid(did);
-  } catch (e) {
-    print(e);
-  }
-  if (key == null) {
+
+  if (!await alice.containsKey(did)) {
     print('I do not control this did');
   }
   // in this case alice must sent a propose credential with a correct did
   var vc = receivedOffer.detail![0].credential;
-  var aliceCredDid = await alice.getNextCredentialDID(KeyType.ed25519);
+  var aliceCredDid = await alice.generateNewKey(keyType: KeyType.ed25519);
   vc.credentialSubject['id'] = aliceCredDid;
-  var propose = ProposeCredential(detail: [
+  var propose = ProposeCredential(from: connectionDidAlice, detail: [
     LdProofVcDetail(credential: vc, options: receivedOffer.detail![0].options)
   ]);
-  var encryptedPropose = DidcommEncryptedMessage.fromPlaintext(
-      senderPrivateKeyJwk: privateKey,
+
+  var encryptedPropose = await propose.encrypt(
       recipientPublicKeyJwk: [ddoMuseum.keyAgreement![0].publicKeyJwk],
-      plaintext: propose);
+      wallet: alice,
+      keyId: connectionDidAlice);
   //This message could be sent to the museum
 
   //***** Museum ****
 
   //decrypt message and see, that it is an credential propose that do not differ much from the previous offer
   // (not all checking steps are shown here because they are straight forward)
-  var decryptedPropose = encryptedPropose.decryptWithJwk(
-      museumPrivateKey, senderDDO.keyAgreement![0].publicKeyJwk);
+  var decryptedPropose = await encryptedPropose.decrypt(
+      wallet: museum,
+      senderPublicKeyJwk: senderDDO.keyAgreement![0].publicKeyJwk);
   var receivedPropose = ProposeCredential.fromJson(decryptedPropose.toJson());
 
   //Therefore the museum construct a offer out of it
@@ -244,24 +243,27 @@ void main() async {
 
   //**** Museum ****
   //Takes credential from Request, checks if everything is fine and signs it
-  var signed = await signCredential(
-      museum, requestCredential.detail![0].credential.toJson(),
+  var museumCredentialSigner = WalletCredentialSigner(museum, museumIssuerDid!,
+      'EdDSA', '$museumIssuerDid#${museumIssuerDid.split(':').last}');
+  var credential = requestCredential.detail![0].credential;
+  await credential.sign(
+      museumCredentialSigner, LdpProofType.ed25519Signature2020,
       challenge: requestCredential.detail![0].options.challenge);
-  print(signed);
+  print(credential);
   //construct a issue credential message and sent credential to alice
-  var issueMessage =
-      IssueCredential(credentials: [VerifiableCredential.fromJson(signed)]);
+  var issueMessage = IssueCredential(credentials: [credential]);
 
   //***** Alice *****
   var receivedVC = issueMessage.credentials![0];
   //verify received credential
-  print(await verifyCredential(receivedVC,
+  print(await receivedVC.verify(
       expectedChallenge: requestCredential.detail![0].options.challenge));
 
   //store credential
-  var path = alice.getCredential(aliceCredDid)!.hdPath;
-  await alice.storeCredential(receivedVC.toString(), '', path,
-      keyType: KeyType.ed25519);
+  await alice.storeCredential(
+    receivedVC.toString(),
+    aliceCredDid,
+  );
 
   //check if two creds are there
   var aliceAllCreds = alice.getAllCredentials();
@@ -271,11 +273,10 @@ void main() async {
 
 Future<void> _issueStudentCard(WalletStore wallet) async {
   var someUniversity = WalletStore('example/didcomm/someUniversity');
-  await someUniversity.openBoxes('password');
-  await someUniversity.initialize();
-  await someUniversity.initializeIssuer(KeyType.ed25519);
+  await someUniversity.openBoxes(password: 'password');
+  await someUniversity.initializeIssuer(keyType: KeyType.ed25519);
   var issuerDid = someUniversity.getStandardIssuerDid(KeyType.ed25519);
-  var holderDid = await wallet.getNextCredentialDID(KeyType.ed25519);
+  var holderDid = await wallet.generateNewKey(keyType: KeyType.ed25519);
 
   var studentCard = {
     'id': holderDid,
@@ -285,31 +286,27 @@ Future<void> _issueStudentCard(WalletStore wallet) async {
   };
 
   var cred = VerifiableCredential(
-      context: [
-        'https://www.w3.org/2018/credentials/v1',
-        'https://www.example.com/studentCard/v1'
-      ],
-      type: [
-        'VerifiableCredential',
-        'StudentCard'
-      ],
+      context: ['https://www.w3.org/2018/credentials/v1', schemaOrgIri],
+      type: ['VerifiableCredential', 'StudentCard'],
       issuer: issuerDid,
       credentialSubject: studentCard,
       issuanceDate: DateTime.now());
 
-  var signedCred = await signCredential(someUniversity, cred);
-  var hdPath = wallet.getCredential(holderDid)!.hdPath;
-  await wallet.storeCredential(signedCred, '', hdPath,
-      keyType: KeyType.ed25519);
+  var signer =
+      WalletCredentialSigner(someUniversity, issuerDid!, 'EdDSA', issuerDid);
+  await cred.sign(signer, LdpProofType.ed25519Signature2020);
+  await wallet.storeCredential(
+    cred.toString(),
+    holderDid,
+  );
 }
 
 Future<void> _issueBusinessId(WalletStore wallet) async {
   var someIssuer = WalletStore('example/didcomm/someIssuer');
-  await someIssuer.openBoxes('password');
-  await someIssuer.initialize();
-  await someIssuer.initializeIssuer(KeyType.ed25519);
+  await someIssuer.openBoxes(password: 'password');
+  await someIssuer.initializeIssuer(keyType: KeyType.ed25519);
   var issuerDid = someIssuer.getStandardIssuerDid(KeyType.ed25519);
-  var holderDid = await wallet.getNextCredentialDID(KeyType.ed25519);
+  var holderDid = await wallet.generateNewKey(keyType: KeyType.ed25519);
 
   var businessId = {
     'id': holderDid,
@@ -322,20 +319,17 @@ Future<void> _issueBusinessId(WalletStore wallet) async {
   };
 
   var cred = VerifiableCredential(
-      context: [
-        'https://www.w3.org/2018/credentials/v1',
-        'https://www.example.com/businesId/v1'
-      ],
-      type: [
-        'VerifiableCredential',
-        'BusinessID'
-      ],
+      context: ['https://www.w3.org/2018/credentials/v1', schemaOrgIri],
+      type: ['VerifiableCredential', 'BusinessID'],
       issuer: issuerDid,
       credentialSubject: businessId,
       issuanceDate: DateTime.now());
 
-  var signedCred = await signCredential(someIssuer, cred);
-  var hdPath = wallet.getCredential(holderDid)!.hdPath;
-  await wallet.storeCredential(signedCred, '', hdPath,
-      keyType: KeyType.ed25519);
+  var signer =
+      WalletCredentialSigner(someIssuer, issuerDid!, 'EdDSA', issuerDid);
+  await cred.sign(signer, LdpProofType.ed25519Signature2020);
+  await wallet.storeCredential(
+    cred.toString(),
+    holderDid,
+  );
 }

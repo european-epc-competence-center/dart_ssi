@@ -1,13 +1,15 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:dart_ssi/did.dart';
+import 'package:dart_ssi/src/util/crypto_provider.dart';
+import 'package:dart_ssi/src/wallet/wallet_store.dart';
 import 'package:http/http.dart';
 import 'package:json_schema/json_schema.dart';
+import 'package:sd_jwt/sd_jwt.dart' as sd_jwt;
 
-import '../credentials/credential_operations.dart';
 import '../util/types.dart';
 import '../util/utils.dart';
-import '../wallet/wallet_store.dart';
 import 'types.dart';
 
 var plaintextSchema = JsonSchema.create({
@@ -40,7 +42,7 @@ bool isPlaintextMessage(dynamic message) {
 }
 
 /// A plaintext-Message (json-web message) as per didcomm specification
-class DidcommPlaintextMessage implements JsonObject, DidcommMessage {
+class DidcommPlaintextMessage extends DidcommMessage {
   List<dynamic>? to;
   String? from;
   late String id;
@@ -241,15 +243,10 @@ class DidcommPlaintextMessage implements JsonObject, DidcommMessage {
 
     return message;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
 /// Attachment for a didcomm message
-class Attachment implements JsonObject {
+class Attachment extends JsonObject {
   String? id;
   String? description;
   String? filename;
@@ -306,15 +303,10 @@ class Attachment implements JsonObject {
     if (byteCount != null) jsonData['byte_count'] = byteCount;
     return jsonData;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
 /// represents the data in a didcomm message attachment
-class AttachmentData implements JsonObject {
+class AttachmentData extends JsonObject {
   dynamic jws;
   String? hash;
   List<String>? links;
@@ -408,13 +400,8 @@ class AttachmentData implements JsonObject {
     return jsonData;
   }
 
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
-
   //TODO: for now sign and verify only support json encodeable content
-  Future<void> sign(WalletStore wallet, didToSignWith) async {
+  Future<void> sign(WalletStore wallet, keyIdToSignWith) async {
     Map<String, dynamic> payload;
     if (json != null) {
       payload = json!;
@@ -424,26 +411,53 @@ class AttachmentData implements JsonObject {
     } else {
       throw Exception('nothing to sign');
     }
-    jws = await signStringOrJson(
-        wallet: wallet,
-        didToSignWith: didToSignWith,
-        toSign: payload,
-        detached: true);
+    var provider = WalletCryptoProviderForSdJwt(wallet, keyIdToSignWith);
+    var info = await wallet.getKeyInformation(keyIdToSignWith);
+    sd_jwt.SigningAlgorithm algorithm;
+    if (info['crv'] == 'Ed25519') {
+      algorithm = sd_jwt.SigningAlgorithm.eddsa25519Sha512;
+    } else if (info['crv'] == 'P-256') {
+      algorithm = sd_jwt.SigningAlgorithm.ecdsaSha256Prime;
+    } else if (info['crv'] == 'P-384') {
+      algorithm = sd_jwt.SigningAlgorithm.ecdsaSha384Prime;
+    } else if (info['crv'] == 'P-521') {
+      algorithm = sd_jwt.SigningAlgorithm.ecdsaSha512Prime;
+    } else if (info['crv'] == 'P-256k' || info['crv'] == 'secp256k1') {
+      algorithm = sd_jwt.SigningAlgorithm.ecdsaSha256Koblitz;
+    } else {
+      throw Exception('Cannot determine signing algorithm');
+    }
+    var jwt = sd_jwt.Jwt(additionalClaims: payload);
+    var signed = await jwt.sign(signer: provider, signingAlgorithm: algorithm);
+    var split = signed.toCompactSerialization().split('.');
+    jws = '${split.first}..${split.last}';
   }
 
   Future<bool> verifyJws(String expectedDid) async {
     if (jws == null) throw Exception('no signature found');
-    Map<String, dynamic> payload;
+    String payload;
     if (json != null) {
-      payload = json!;
+      payload = removePaddingFromBase64(
+          base64UrlEncode(utf8.encode(jsonEncode(json!))));
     } else if (base64 != null) {
-      payload =
-          jsonDecode(utf8.decode(base64Decode(addPaddingToBase64(base64!))));
+      payload = base64!;
     } else {
       throw Exception('nothing to sign');
     }
-    return verifyStringSignature(jws,
-        expectedDid: expectedDid, toSign: payload);
+    var jwsCasted = sd_jwt.Jws.fromCompactSerialization(
+        '${jws!.split('.')[0]}.$payload.${jws!.split('.')[2]}');
+    var ddo = await resolveDidDocument(expectedDid);
+    ddo = ddo.resolveKeyIds().convertAllKeysToJwk();
+    var jwk = sd_jwt.Jwk.fromJson(ddo.verificationMethod!.first.publicKeyJwk!);
+    sd_jwt.CryptoProvider provider;
+    if (jwk.keyType == sd_jwt.KeyType.okp) {
+      provider =
+          sd_jwt.Ed25519EdwardsCryptoProvider(jwk.key as sd_jwt.AsymmetricKey);
+    } else {
+      provider =
+          sd_jwt.PointyCastleCryptoProvider(jwk.key as sd_jwt.AsymmetricKey);
+    }
+    return jwsCasted.verify(provider);
   }
 }
 
@@ -498,7 +512,7 @@ class FromPriorJWT {
   }
 }
 
-class WebRedirect implements JsonObject {
+class WebRedirect extends JsonObject {
   late String redirectUrl;
   late AcknowledgeStatus status;
 
@@ -535,10 +549,5 @@ class WebRedirect implements JsonObject {
   @override
   Map<String, dynamic> toJson() {
     return {'status': status.value, 'redirectUrl': redirectUrl};
-  }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
   }
 }

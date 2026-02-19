@@ -1,12 +1,10 @@
-import 'dart:convert';
-
 import 'package:json_path/json_path.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../util.dart';
 import 'presentation_exchange.dart';
 
-class CredentialManifest implements JsonObject {
+class CredentialManifest extends JsonObject {
   late String id;
   String? name;
   String? description;
@@ -86,14 +84,9 @@ class CredentialManifest implements JsonObject {
     }
     return map;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class IssuerProperty implements JsonObject {
+class IssuerProperty extends JsonObject {
   late String id;
   String? name;
   dynamic styles;
@@ -140,14 +133,9 @@ class IssuerProperty implements JsonObject {
     }
     return map;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class OutputDescriptor implements JsonObject {
+class OutputDescriptor extends JsonObject {
   late String id;
   late String schema;
   String? name;
@@ -217,14 +205,9 @@ class OutputDescriptor implements JsonObject {
     }
     return map;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class DisplayProperty implements JsonObject {
+class DisplayProperty extends JsonObject {
   DisplayMappingObject? title;
   DisplayMappingObject? subtitle;
   DisplayMappingObject? description;
@@ -268,14 +251,9 @@ class DisplayProperty implements JsonObject {
     }
     return map;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class DisplayMappingObject implements JsonObject {
+class DisplayMappingObject extends JsonObject {
   List<JsonPath>? path;
   String? text;
   SchemaObject? schema;
@@ -320,11 +298,6 @@ class DisplayMappingObject implements JsonObject {
     }
     return map;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
 class LabeledDisplayMappingObject extends DisplayMappingObject {
@@ -354,7 +327,7 @@ class LabeledDisplayMappingObject extends DisplayMappingObject {
   }
 }
 
-class SchemaObject implements JsonObject {
+class SchemaObject extends JsonObject {
   late DIFSchemaType type;
   StringFormat? format;
 
@@ -442,14 +415,9 @@ class SchemaObject implements JsonObject {
     }
     return map;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class CredentialApplication implements JsonObject {
+class CredentialApplication extends JsonObject {
   late String id;
   late String manifestId;
   late String specVersion;
@@ -505,14 +473,9 @@ class CredentialApplication implements JsonObject {
     }
     return map;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class CredentialFulfillment implements JsonObject {
+class CredentialFulfillment extends JsonObject {
   late String id;
   late String manifestId;
   String? applicationId;
@@ -560,14 +523,9 @@ class CredentialFulfillment implements JsonObject {
     map['descriptor_map'] = descriptorMap.map((e) => e.toJson()).toList();
     return map;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class EntityStyles implements JsonObject {
+class EntityStyles extends JsonObject {
   EntityStylesImage? thumbnail;
   EntityStylesImage? hero;
   String? backgroundColor;
@@ -609,14 +567,9 @@ class EntityStyles implements JsonObject {
     }
     return map;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class EntityStylesImage implements JsonObject {
+class EntityStylesImage extends JsonObject {
   late String uri;
   String? alt;
 
@@ -641,11 +594,6 @@ class EntityStylesImage implements JsonObject {
       map['alt'] = alt!;
     }
     return map;
-  }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
   }
 }
 

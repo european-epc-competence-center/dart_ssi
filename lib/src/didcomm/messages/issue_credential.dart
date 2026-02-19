@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:uuid/uuid.dart';
 
 import '../../credentials/credential_manifest.dart';
@@ -413,7 +411,7 @@ class PreviewCredential extends DidcommPlaintextMessage {
   }
 }
 
-class PreviewCredentialAttribute implements JsonObject {
+class PreviewCredentialAttribute extends JsonObject {
   late String name;
   String? mimeType;
   late String value;
@@ -446,15 +444,10 @@ class PreviewCredentialAttribute implements JsonObject {
     jsonObject['value'] = value;
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
 //******Json-Ld Attachment (RFC 0593) ********
-class LdProofVcDetail implements JsonObject {
+class LdProofVcDetail extends JsonObject {
   late VerifiableCredential credential;
   late LdProofVcDetailOptions options;
 
@@ -481,14 +474,9 @@ class LdProofVcDetail implements JsonObject {
     jsonObject['options'] = options.toJson();
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class LdProofVcDetailOptions implements JsonObject {
+class LdProofVcDetailOptions extends JsonObject {
   late String proofType;
   String? proofPurpose;
   DateTime? created;
@@ -540,14 +528,9 @@ class LdProofVcDetailOptions implements JsonObject {
     }
     return jsonObject;
   }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
 }
 
-class CredentialManifestAttachment implements JsonObject {
+class CredentialManifestAttachment extends JsonObject {
   late String challenge;
   late String domain;
   late CredentialManifest credentialManifest;
@@ -589,10 +572,5 @@ class CredentialManifestAttachment implements JsonObject {
       'domain': domain,
       'credential_manifest': credentialManifest.toJson()
     };
-  }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
   }
 }

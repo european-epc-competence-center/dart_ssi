@@ -17,9 +17,9 @@ class CredentialAdapter extends TypeAdapter<Credential> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return Credential(
-      fields[0] as String,
       fields[1] as String,
       fields[2] as String,
+      fields[0] as String,
     );
   }
 
@@ -30,9 +30,9 @@ class CredentialAdapter extends TypeAdapter<Credential> {
       ..writeByte(0)
       ..write(obj.hdPath)
       ..writeByte(1)
-      ..write(obj.w3cCredential)
+      ..write(obj.verifiableCredential)
       ..writeByte(2)
-      ..write(obj.plaintextCredential);
+      ..write(obj.metadata);
   }
 
   @override

@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:uuid/uuid.dart';
 
 import '../../credentials/presentation_exchange.dart';
@@ -52,8 +50,7 @@ class ProposePresentation extends DidcommPlaintextMessage {
     }
   }
 
-  ProposePresentation.fromJson(super.jsonObject)
-      : super.fromJson() {
+  ProposePresentation.fromJson(super.jsonObject) : super.fromJson() {
     if (type != DidcommMessages.proposePresentation) {
       throw Exception('Unsupported type or version');
     }
@@ -122,8 +119,7 @@ class RequestPresentation extends DidcommPlaintextMessage {
     }
   }
 
-  RequestPresentation.fromJson(super.jsonObject)
-      : super.fromJson() {
+  RequestPresentation.fromJson(super.jsonObject) : super.fromJson() {
     if (type != DidcommMessages.requestPresentation) {
       throw Exception('Unsupported type or version');
     }
@@ -227,7 +223,7 @@ class Presentation extends DidcommPlaintextMessage {
   }
 }
 
-class PresentationDefinitionWithOptions implements JsonObject {
+class PresentationDefinitionWithOptions extends JsonObject {
   late String domain;
   late String challenge;
   late PresentationDefinition presentationDefinition;
@@ -278,10 +274,5 @@ class PresentationDefinitionWithOptions implements JsonObject {
     jsonObject['options'] = options;
     jsonObject['presentation_definition'] = presentationDefinition.toJson();
     return jsonObject;
-  }
-
-  @override
-  String toString() {
-    return jsonEncode(toJson());
   }
 }
