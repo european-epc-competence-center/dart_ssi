@@ -163,8 +163,10 @@ class AuthorizationDetailsObject implements JsonObject {
 
 class CredentialIssuerMetaData implements JsonObject {
   late String credentialIssuer;
-  /// Single AS identifier. From metadata: first of [authorization_servers] or [authorization_server].
+  /// Single AS identifier (authorization_server).
   String? authorizationServer;
+  /// AS identifiers (authorization_servers array) §12.2.4.
+  List<String>? authorizationServers;
   late String credentialEndpoint;
   String? batchCredentialEndpoint;
   String? nonceEndpoint;
@@ -175,6 +177,7 @@ class CredentialIssuerMetaData implements JsonObject {
   CredentialIssuerMetaData(
       {required this.credentialIssuer,
       this.authorizationServer,
+      this.authorizationServers,
       required this.credentialEndpoint,
       this.batchCredentialEndpoint,
       this.nonceEndpoint,
@@ -195,20 +198,12 @@ class CredentialIssuerMetaData implements JsonObject {
       throw Exception('credential_endpoint property is needed');
     }
 
-    // Metadata: authorization_servers (array) §12.2.4; legacy: authorization_server (single string)
-    if (jsonObject.containsKey('authorization_servers')) {
-      final list = jsonObject['authorization_servers'];
-      if (list is List && list.isNotEmpty) {
-        authorizationServer = list.first.toString();
-      } else {
-        authorizationServer = null;
-      }
-    } else if (jsonObject.containsKey('authorization_server')) {
-      final v = jsonObject['authorization_server'];
-      authorizationServer = v?.toString();
-    } else {
-      authorizationServer = null;
-    }
+    authorizationServers = jsonObject.containsKey('authorization_servers')
+        ? (jsonObject['authorization_servers'] is List
+            ? (jsonObject['authorization_servers'] as List).map((e) => e.toString()).toList()
+            : null)
+        : null;
+    authorizationServer = jsonObject['authorization_server']?.toString();
     batchCredentialEndpoint = jsonObject['batch_credential_endpoint'];
     nonceEndpoint = jsonObject['nonce_endpoint']?.toString();
 
@@ -265,6 +260,9 @@ class CredentialIssuerMetaData implements JsonObject {
     }
     if (authorizationServer != null && authorizationServer!.isNotEmpty) {
       jsonObject['authorization_server'] = authorizationServer;
+    }
+    if (authorizationServers != null && authorizationServers!.isNotEmpty) {
+      jsonObject['authorization_servers'] = authorizationServers;
     }
     if (display != null && display!.isNotEmpty) {
       var tmp = [];
