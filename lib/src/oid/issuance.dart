@@ -555,9 +555,14 @@ class CredentialIssuerMetaData extends JsonObject {
       throw Exception('credential_endpoint property is needed');
     }
 
+    // §12.2.4: authorization_servers (array) or legacy authorization_server (single)
     if (jsonObject.containsKey('authorization_servers')) {
+      final list = jsonObject['authorization_servers'];
       authorizationServer =
-          (jsonObject['authorization_servers'] as List).cast<String>();
+          list is List ? list.map((e) => e.toString()).toList() : null;
+    } else if (jsonObject.containsKey('authorization_server')) {
+      final v = jsonObject['authorization_server'];
+      authorizationServer = v != null ? [v.toString()] : null;
     }
 
     batchCredentialEndpoint = jsonObject['batch_credential_endpoint'];
