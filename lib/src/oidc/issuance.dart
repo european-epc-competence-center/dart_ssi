@@ -6,10 +6,15 @@ import '../util/utils.dart';
 class OidcCredentialOffer implements JsonObject {
   late String credentialIssuer;
   late List<dynamic> credentials;
+  /// OpenID4VCI 1.0 §4.1.1: credential_configuration_ids (array of strings).
+  List<String>? credentialConfigurationIds;
   Map<String, dynamic>? grants;
 
   OidcCredentialOffer(
-      {required this.credentialIssuer, required this.credentials, this.grants});
+      {required this.credentialIssuer,
+      required this.credentials,
+      this.credentialConfigurationIds,
+      this.grants});
 
   OidcCredentialOffer.fromJson(dynamic data) {
     _parseJson(data);
@@ -30,15 +35,28 @@ class OidcCredentialOffer implements JsonObject {
           'credential_issuer property is needed in OpenId Connect 4VC CredentialOffer');
     }
 
+    // OpenID4VCI 1.0 §4.1.1: credential_configuration_ids (primary)
+    if (jsonObject.containsKey('credential_configuration_ids')) {
+      final ids = jsonObject['credential_configuration_ids'];
+      credentialConfigurationIds =
+          ids is List ? ids.map((e) => e.toString()).toList() : null;
+    } else {
+      credentialConfigurationIds = null;
+    }
+
     if (jsonObject.containsKey('credentials')) {
       credentials = jsonObject['credentials'];
+    } else if (credentialConfigurationIds != null) {
+      credentials = credentialConfigurationIds!;
     } else {
       throw Exception(
-          'credentials property is needed in OpenId Connect 4VC CredentialOffer');
+          'credentials or credential_configuration_ids is needed in OpenId Connect 4VC CredentialOffer');
     }
 
     if (jsonObject.containsKey('grants')) {
       grants = jsonObject['grants'] as Map<String, dynamic>;
+    } else {
+      grants = null;
     }
   }
 
@@ -48,11 +66,12 @@ class OidcCredentialOffer implements JsonObject {
       'credential_issuer': credentialIssuer,
       'credentials': credentials
     };
-
+    if (credentialConfigurationIds != null) {
+      jsonObject['credential_configuration_ids'] = credentialConfigurationIds;
+    }
     if (grants != null) {
       jsonObject['grants'] = grants;
     }
-
     return jsonObject;
   }
 
@@ -117,12 +136,40 @@ class OidcTokenResponse implements JsonObject {
   }
 }
 
+/// OpenID4VCI authorization_details entry (type openid_credential).
+class AuthorizationDetailsObject implements JsonObject {
+  String? format;
+  String? credentialConfigurationId;
+  List<String>? credentialType;
+
+  AuthorizationDetailsObject(
+      {this.format,
+      this.credentialConfigurationId,
+      this.credentialType});
+
+  @override
+  Map<String, dynamic> toJson() {
+    final m = <String, dynamic>{'type': 'openid_credential'};
+    if (credentialConfigurationId != null) {
+      m['credential_configuration_id'] = credentialConfigurationId;
+    }
+    if (format != null) m['format'] = format;
+    return m;
+  }
+
+  @override
+  String toString() => jsonEncode(toJson());
+}
+
 class CredentialIssuerMetaData implements JsonObject {
   late String credentialIssuer;
+  /// Single AS identifier. From metadata: first of [authorization_servers] or [authorization_server].
   String? authorizationServer;
   late String credentialEndpoint;
   String? batchCredentialEndpoint;
-  late List<CredentialsSupportedObject> credentialsSupported;
+  String? nonceEndpoint;
+  /// Map keyed by credential configuration id (OpenID4VCI 1.0 §12.2.4).
+  late Map<String, CredentialsSupportedObject> credentialsSupported;
   List<OidcDisplayObject>? display;
 
   CredentialIssuerMetaData(
@@ -130,6 +177,7 @@ class CredentialIssuerMetaData implements JsonObject {
       this.authorizationServer,
       required this.credentialEndpoint,
       this.batchCredentialEndpoint,
+      this.nonceEndpoint,
       required this.credentialsSupported,
       this.display});
 
@@ -147,8 +195,22 @@ class CredentialIssuerMetaData implements JsonObject {
       throw Exception('credential_endpoint property is needed');
     }
 
-    authorizationServer = jsonObject['authorization_server'];
+    // Metadata: authorization_servers (array) §12.2.4; legacy: authorization_server (single string)
+    if (jsonObject.containsKey('authorization_servers')) {
+      final list = jsonObject['authorization_servers'];
+      if (list is List && list.isNotEmpty) {
+        authorizationServer = list.first.toString();
+      } else {
+        authorizationServer = null;
+      }
+    } else if (jsonObject.containsKey('authorization_server')) {
+      final v = jsonObject['authorization_server'];
+      authorizationServer = v?.toString();
+    } else {
+      authorizationServer = null;
+    }
     batchCredentialEndpoint = jsonObject['batch_credential_endpoint'];
+    nonceEndpoint = jsonObject['nonce_endpoint']?.toString();
 
     if (jsonObject.containsKey('display')) {
       display = [];
@@ -158,11 +220,33 @@ class CredentialIssuerMetaData implements JsonObject {
       }
     }
 
-    credentialsSupported = [];
-    if (jsonObject.containsKey('credentials_supported')) {
+    credentialsSupported = {};
+    // OpenID4VCI 1.0 §12.2.4: primary is credential_configurations_supported (object)
+    if (jsonObject.containsKey('credential_configurations_supported')) {
+      final ccs = jsonObject['credential_configurations_supported'];
+      if (ccs is Map) {
+        for (final e in ccs.entries) {
+          final id = e.key.toString();
+          final config = e.value;
+          if (config is! Map<String, dynamic>) continue;
+          final clone = Map<String, dynamic>.from(config);
+          clone['id'] = id;
+          credentialsSupported[id] = CredentialsSupportedObject.fromJson(clone);
+        }
+      }
+    }
+    // Legacy: credentials_supported (array), keyed by each entry's id
+    if (credentialsSupported.isEmpty &&
+        jsonObject.containsKey('credentials_supported')) {
       var tmp = jsonObject['credentials_supported'];
-      for (var s in tmp) {
-        credentialsSupported.add(CredentialsSupportedObject.fromJson(s));
+      if (tmp is List) {
+        for (var s in tmp) {
+          final obj = CredentialsSupportedObject.fromJson(s);
+          final id = obj.id;
+          if (id != null && id.isNotEmpty) {
+            credentialsSupported[id] = obj;
+          }
+        }
       }
     }
   }
@@ -176,7 +260,10 @@ class CredentialIssuerMetaData implements JsonObject {
     if (batchCredentialEndpoint != null) {
       jsonObject['batch_credential_endpoint'] = batchCredentialEndpoint;
     }
-    if (authorizationServer != null) {
+    if (nonceEndpoint != null) {
+      jsonObject['nonce_endpoint'] = nonceEndpoint;
+    }
+    if (authorizationServer != null && authorizationServer!.isNotEmpty) {
       jsonObject['authorization_server'] = authorizationServer;
     }
     if (display != null && display!.isNotEmpty) {
@@ -189,10 +276,10 @@ class CredentialIssuerMetaData implements JsonObject {
 
     if (credentialsSupported.isNotEmpty) {
       var tmp = [];
-      for (var s in credentialsSupported) {
+      for (var s in credentialsSupported.values) {
         tmp.add(s.toJson());
       }
-      jsonObject['credentialSubject'] = tmp;
+      jsonObject['credentials_supported'] = tmp;
     }
 
     return jsonObject;
@@ -214,6 +301,7 @@ class CredentialsSupportedObject implements JsonObject {
   List<OidcDisplayObject>? display;
   List<String>? order;
   Map<String, CredentialSubjectMetadata>? credentialSubject;
+  String? scope;
 
   CredentialsSupportedObject(
       {required this.format,
@@ -224,7 +312,18 @@ class CredentialsSupportedObject implements JsonObject {
       this.credentialSubject,
       this.cryptographicBindingMethods,
       this.cryptographicSuitesSupported,
-      this.order});
+      this.order,
+      this.scope});
+
+  /// Alias for [type] (OpenID4VCI credential type array).
+  List<String> get credentialType => type;
+
+  /// Alias for [id] (credential configuration id).
+  String? get credentialId => id;
+  set credentialId(String? v) => id = v;
+
+  /// Alias for [credentialSubject] for wallet display (claims description map).
+  Map<String, CredentialSubjectMetadata>? get claims => credentialSubject;
 
   CredentialsSupportedObject.fromJson(dynamic data) {
     var jsonObject = credentialToMap(data);
@@ -236,18 +335,28 @@ class CredentialsSupportedObject implements JsonObject {
 
     id = jsonObject['id'];
 
-    if (jsonObject.containsKey('types')) {
+    // OpenID4VCI 1.0 Appendix A: credential_definition.type (and @context for ldp_vc)
+    final credDef = jsonObject['credential_definition'];
+    if (credDef is Map && credDef.containsKey('type')) {
+      final t = credDef['type'];
+      type = t is List ? t.cast<String>() : [t.toString()];
+    } else if (jsonObject.containsKey('types')) {
       type = jsonObject['types'].cast<String>();
+    } else if (jsonObject.containsKey('type')) {
+      final t = jsonObject['type'];
+      type = t is List ? t.cast<String>() : [t.toString()];
     } else {
-      if (jsonObject.containsKey('type')) {
-        type = [jsonObject['type']];
-      } else {
-        throw Exception('type(s) property needed');
-      }
+      type = [];
     }
 
-    if (jsonObject.containsKey('context')) {
-      context = jsonObject['@context'].cast<String>();
+    if (credDef is Map && credDef.containsKey('@context')) {
+      final c = credDef['@context'];
+      context = c is List ? c.cast<String>() : (c != null ? [c.toString()] : null);
+    } else if (jsonObject.containsKey('@context')) {
+      final c = jsonObject['@context'];
+      context = c is List ? c.cast<String>() : (c != null ? [c.toString()] : null);
+    } else {
+      context = null;
     }
 
     if (jsonObject.containsKey('cryptographic_binding_methods_supported')) {
@@ -255,14 +364,21 @@ class CredentialsSupportedObject implements JsonObject {
           jsonObject['cryptographic_binding_methods_supported'].cast<String>();
     }
 
-    if (jsonObject.containsKey('cryptographic_suites_supported')) {
+    if (jsonObject.containsKey('credential_signing_alg_values_supported')) {
+      cryptographicSuitesSupported =
+          jsonObject['credential_signing_alg_values_supported'].cast<String>();
+    } else if (jsonObject.containsKey('cryptographic_suites_supported')) {
       cryptographicSuitesSupported =
           jsonObject['cryptographic_suites_supported'].cast<String>();
+    } else {
+      cryptographicSuitesSupported = null;
     }
 
     if (jsonObject.containsKey('order')) {
       order = jsonObject['order'].cast<String>();
     }
+
+    scope = jsonObject['scope']?.toString();
 
     if (jsonObject.containsKey('display')) {
       List tmp = jsonObject['display'];
@@ -270,6 +386,8 @@ class CredentialsSupportedObject implements JsonObject {
       for (var d in tmp) {
         display!.add(OidcDisplayObject.fromJson(d));
       }
+    } else {
+      display = null;
     }
 
     if (jsonObject.containsKey('credentialSubject')) {
@@ -278,6 +396,8 @@ class CredentialsSupportedObject implements JsonObject {
       tmp.forEach((key, value) {
         credentialSubject![key] = CredentialSubjectMetadata.fromJson(value);
       });
+    } else {
+      credentialSubject = null;
     }
   }
 
@@ -286,6 +406,9 @@ class CredentialsSupportedObject implements JsonObject {
     Map<String, dynamic> jsonObject = {'format': format, 'type': type};
     if (id != null) {
       jsonObject['id'] = id;
+    }
+    if (scope != null) {
+      jsonObject['scope'] = scope;
     }
     if (cryptographicSuitesSupported != null) {
       jsonObject['cryptographic_suites_supported'] =
@@ -296,7 +419,7 @@ class CredentialsSupportedObject implements JsonObject {
           cryptographicBindingMethods;
     }
     if (context != null) {
-      jsonObject['context'] = context;
+      jsonObject['@context'] = context;
     }
     if (order != null) {
       jsonObject['order'] = order;
@@ -449,3 +572,6 @@ class UrlData implements JsonObject {
     return jsonEncode(toJson());
   }
 }
+
+/// Alias for [OidcDisplayObject] (used by id_ideal_wallet).
+typedef OidDisplayObject = OidcDisplayObject;
