@@ -518,7 +518,8 @@ class OidTokenResponse extends JsonObject {
 
 class CredentialIssuerMetaData extends JsonObject {
   late String credentialIssuer;
-  List<String>? authorizationServer,
+  String? authorizationServer;
+  List<String>? authorizationServers,
       credentialResponseEncryptionAlgSupported,
       credentialResponseEncryptionEncSupported;
   late String credentialEndpoint;
@@ -558,11 +559,11 @@ class CredentialIssuerMetaData extends JsonObject {
     // §12.2.4: authorization_servers (array) or legacy authorization_server (single)
     if (jsonObject.containsKey('authorization_servers')) {
       final list = jsonObject['authorization_servers'];
-      authorizationServer =
+      authorizationServers =
           list is List ? list.map((e) => e.toString()).toList() : null;
     } else if (jsonObject.containsKey('authorization_server')) {
       final v = jsonObject['authorization_server'];
-      authorizationServer = v != null ? [v.toString()] : null;
+      authorizationServers = v != null ? [v.toString()] : null;
     }
 
     batchCredentialEndpoint = jsonObject['batch_credential_endpoint'];
@@ -662,8 +663,8 @@ class CredentialIssuerMetaData extends JsonObject {
     if (deferredCredentialEndpoint != null) {
       jsonObject['deferred_credential_endpoint'] = deferredCredentialEndpoint;
     }
-    if (authorizationServer != null) {
-      jsonObject['authorization_servers'] = authorizationServer;
+    if (authorizationServers != null) {
+      jsonObject['authorization_servers'] = authorizationServers;
     }
     if (notificationEndpoint != null) {
       jsonObject['notification_endpoint'] = notificationEndpoint;
